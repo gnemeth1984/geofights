@@ -3,6 +3,7 @@ import { createSpeechBubble } from "./speech";
 import { blockPlanFor, buildBlock, type BlockContext } from "./mesh-blocks";
 import { applySkin } from "./skin";
 import { buildLimb, buildSpine, buildTorso } from "./anatomy";
+import { buildWing, wingStyleFor } from "./wings";
 import {
   dressHead,
   dressLimb,
@@ -462,7 +463,10 @@ const CORE_CURVES: Record<Exclude<CoreState, "idle">, MoveCurve> = {
     c.lean = (k * 0.3 + back * 0.08) * i;
     c.push = (k * 0.2 + back * 0.05) * i;
     c.squash = -k * 0.1 * i;
-    c.armSwing = -k * 1.15 * i;
+    // Same sign as `lean` and `push` above, because they are the same motion:
+    // the whole body goes at the opponent and the arms go with it. Negative
+    // here threw the arms out the back of every creature that lurched.
+    c.armSwing = k * 1.15 * i;
   },
   // Compressed by the impact, then rattles: the jitter is a fast decaying shake
   // on all three offsets, not a clean oscillation.
@@ -517,7 +521,11 @@ const ATTACK_CURVES: Record<AttackMove, MoveCurve> = {
     c.stretch = sweep * 0.18 * i;
     c.push = (-load * 0.05 + sweep * 0.08) * i;
     c.squash = load * 0.08 - sweep * 0.1;
-    c.armSwing = (load * 0.5 - sweep * 1.6 - through * 0.3) * i;
+    // Load chambers the arm back, the sweep throws it, the follow-through
+    // carries it past. Read the signs against `push` on the line above: both
+    // are "toward the opponent" channels and both have to agree, or the body
+    // steps into a swipe the hand is travelling away from.
+    c.armSwing = (-load * 0.5 + sweep * 1.6 + through * 0.3) * i;
     c.armFlare = sweep * 0.55 + through * 0.2;
     c.tailSwing = load * 0.4 - sweep * 0.9 - through * 0.3;
     c.spikeFlare = sweep * 0.25;
@@ -609,7 +617,11 @@ const ATTACK_CURVES: Record<AttackMove, MoveCurve> = {
     c.squash = crouch * 0.16 - dash * 0.1 + impact * 0.22;
     c.lift = dash * 0.02 * i - impact * 0.02;
     c.roll = spring(t, 2, 5) * 0.06;
-    c.armSwing = crouch * 0.4 + dash * 0.55 - impact * 0.9 + recover * 0.3;
+    // Beat for beat the same signs as `push`: crouch gathers the arms back,
+    // the dash carries them, the dead stop throws them the last of the way
+    // forward, and the recovery unloads them to rest. It used to chamber
+    // forward and then swing back hardest exactly on contact.
+    c.armSwing = -crouch * 0.4 + dash * 0.55 + impact * 0.35 - recover * 0.3;
     c.tailSwing = Math.sin(t * Math.PI * 3) * 0.45;
     c.glowFlash = impact * 0.3;
     c.shock = t > 0.54 ? Math.min(1, (t - 0.54) / 0.46) : 0;
@@ -649,7 +661,11 @@ const ATTACK_CURVES: Record<AttackMove, MoveCurve> = {
     // and arrives out of the air, landing on the same frame the strike does.
     c.lift = (lunge * 0.018 * i - impact * 0.016) * (1 - air);
     if (air > 0.05) leap(c, t, 0.16, 0.5, 0.05 + 0.13 * air, i, 0, heftFactor(a));
-    c.armSwing = gather * 0.38 + lunge * 0.3 - strike * 1.15 + recoil * 0.35;
+    // The strike beat is the one the whole move is named for, and it is the
+    // one that has to go forward: `armFlare` opens the arm on the same beat
+    // and `glowFlash` fires on the contact inside it. Signed against `push`
+    // above — gather back, lunge and strike out, recoil home.
+    c.armSwing = -gather * 0.38 + lunge * 0.3 + strike * 1.15 - recoil * 0.35;
     c.armFlare = strike * 0.8;
     c.spikeFlare = strike * 0.45;
     c.pulse = (impact * 0.14 - recoil * 0.03) * i;
@@ -679,7 +695,11 @@ const ATTACK_CURVES: Record<AttackMove, MoveCurve> = {
     c.pulse = -land * 0.06;
     if (air > 0.05)
       leap(c, t, 0.18, 0.54, 0.14 + 0.28 * air, i, air >= 0.6 ? 1 : 0, heftFactor(a));
-    c.armSwing = rear * 1.2 + hang * 0.2 - land * 1;
+    // Rearing takes the arms up and over, and the landing drives them down
+    // onto the floor — down to rest and a little past it, which is where a
+    // slam stops. The old `- land * 1` kept swinging after the floor had
+    // already taken the blow and finished with both arms behind the back.
+    c.armSwing = rear * 1.2 + hang * 0.2 - land * 0.3;
     c.wingFlap = rear * 0.8 - land * 0.5;
     c.tailSwing = rear * 0.5 - land * 0.8;
     c.spikeFlare = rear * 0.3 + land * 0.6;
@@ -991,7 +1011,13 @@ const DEFENSE_CURVES: Record<DefenseMove, MoveCurve> = {
     c.squash = (tuck * 0.22 + brace * 0.06) * i;
     c.lean = tuck * 0.1 + brace * 0.05 - unfold * 0.06;
     c.push = -brace * 0.05 * i;
-    c.armSwing = -tuck * 1.45;
+    // A tuck is elbows, not shoulders. The arms come a little across the front
+    // and then fold tight over the body, which is what the wings are doing on
+    // the line below. Swinging the shoulders back instead — which is what
+    // `-tuck * 1.45` did — opened the guard it was supposed to be closing and
+    // left both arms trailing behind a creature hiding inside its own shell.
+    c.armSwing = tuck * 0.55;
+    c.armFold = tuck * 1.35 + brace * 0.2;
     c.wingWrap = tuck * 0.65;
     c.spikeFlare = tuck * 0.8 + brace * 0.3;
     c.glowDrain = tuck * 0.7;
@@ -1012,7 +1038,10 @@ const DEFENSE_CURVES: Record<DefenseMove, MoveCurve> = {
     c.push = (-wrap * 0.05 - flex * 0.07) * i;
     c.sway = -flex * 0.04 * i;
     c.squash = flex * 0.08;
-    c.armSwing = -wrap * 0.95;
+    // The wings are closing over the body, so the arms tuck in under them
+    // rather than swinging out behind where the wings no longer cover.
+    c.armSwing = wrap * 0.4;
+    c.armFold = wrap * 1.1;
     c.glowDrain = wrap * 0.35 + flex * 0.3;
     c.glowFlash = unfurl * 0.3;
     c.roll = jitterNoise(t, 3) * flex * 0.03;
@@ -1039,7 +1068,13 @@ const DEFENSE_CURVES: Record<DefenseMove, MoveCurve> = {
     c.lift = (-dip * 0.02 + dart * 0.05) * (1 - air);
     c.squash = dip * 0.12 - dart * 0.08 + land * 0.1;
     c.push = -dart * 0.04 * i;
-    c.armSwing = -dip * 0.3 - dart * 0.6 - air * dart * 0.5;
+    // The dip sits back onto the rear foot and takes the arms with it, then
+    // the dart pulls them in tight instead of throwing them out behind: a body
+    // getting out of the way makes itself small, and the fold is what does
+    // that. A flip needs them tighter still, so `air` deepens the fold rather
+    // than the swing.
+    c.armSwing = -dip * 0.3 + dart * 0.25;
+    c.armFold = dart * (0.85 + air * 0.5);
     c.tailSwing = dart * 1.2 + land * 0.4;
     c.dust = dart * 0.5 + land * 0.5;
     if (air > 0.05)
@@ -1058,7 +1093,11 @@ const DEFENSE_CURVES: Record<DefenseMove, MoveCurve> = {
     c.roll = -deflect * 0.12 + counter * 0.1;
     c.sway = deflect * 0.05 * i;
     c.squash = counter * 0.12 * i;
-    c.armSwing = -set * 0.5 - deflect * 1.7 + counter * 0.6;
+    // Setting the guard draws the arm back, the deflect sweeps it out across
+    // the incoming hit, and the counter unloads it — the same signs `push`
+    // carries three lines up. Reversed, the arm swept its hardest *behind* the
+    // body, which parries nothing.
+    c.armSwing = -set * 0.5 + deflect * 1.7 - counter * 0.6;
     c.armFlare = deflect * 0.5 + caught * 0.3;
     c.tailSwing = -deflect * 0.5 + counter * 0.4;
     c.spikeFlare = caught * 0.4;
@@ -1079,7 +1118,12 @@ const DEFENSE_CURVES: Record<DefenseMove, MoveCurve> = {
     c.lift = give * 0.04 * i;
     c.wingWrap = Math.max(0, draw * 0.45 - give * 0.2);
     c.spikeFlare = -draw * 0.2 + give * 0.6;
-    c.armSwing = -draw * 0.8 + give * 0.4;
+    // Drawing it in is a gather in front of the chest — forward at the
+    // shoulder, folded hard at the elbow — and giving it back throws that same
+    // fold open. The one defence that ends as an attack should end with the
+    // arms out in front, not behind.
+    c.armSwing = draw * 0.3 + give * 0.7;
+    c.armFold = draw * 1.15 - give * 0.9;
     c.aura = out;
     c.dust = give * 0.5;
   },
@@ -1096,7 +1140,12 @@ const DEFENSE_CURVES: Record<DefenseMove, MoveCurve> = {
     c.squash = coil * 0.08 - snapBack * 0.06;
     c.stretch = snapBack * 0.12 * i;
     c.headPush = coil * 0.03 + snapBack * 0.08;
-    c.armSwing = -coil * 1.25 - snapBack * 0.7;
+    // Coil chambers back onto the rear foot with the lean, and `snapBack` is
+    // the counter itself, so it goes out — the arm cannot be the one thing on
+    // the body still travelling backwards on the beat the stance was waiting
+    // for. The elbow carries it the rest of the way, exactly as a punch does.
+    c.armSwing = -coil * 0.8 + snapBack * 1.3;
+    c.armFold = coil * 0.85 - snapBack * 0.8;
     c.armFlare = coil * 0.3 + snapBack * 0.5;
     c.tailSwing = -coil * 0.55 + Math.sin(t * Math.PI * 3) * 0.14 + snapBack * 0.7;
     c.spikeFlare = coil * 0.5 + snapBack * 0.5;
@@ -1640,6 +1689,15 @@ const RARITY_COLOR: Record<string, number> = {
  */
 const LEG_REST_FLEX = 0.22;
 const ARM_REST_FLEX = 0.3;
+
+/**
+ * How hard the off arm counters the lead arm on a one-sided move.
+ *
+ * Same number, and the same reason, as the third of the thrust the off legs
+ * brace back with: a counter is a shoulder rolling under the drive, not the
+ * other hand throwing the mirror-image punch out the back of the body.
+ */
+const OFF_ARM_COUNTER = 0.34;
 
 /**
  * Trunk height multiplier.
@@ -2472,6 +2530,9 @@ export function createCharacter(config: CharacterConfig): Character {
       wear(limb.pivot, dressLimb({ length: armLength, rootRadius: armRadius, tipRadius: armRadius * ARM_TAPER, cap: true }));
       rig.add(limb.pivot);
       disposables.push(...limb.geometries);
+      // Named so an arm is findable in the scene graph from a debug console.
+      limb.pivot.name = `arm-${side > 0 ? "r" : "l"}`;
+      limb.joint.name = `elbow-${side > 0 ? "r" : "l"}`;
       arms.push({ mesh: limb.pivot, elbow: limb.joint, side, baseY, lead: side > 0 });
     }
   }
@@ -2487,24 +2548,33 @@ export function createCharacter(config: CharacterConfig): Character {
   if (form.wings > 0) {
     const wingPairs = form.wings / 2;
     const span = Math.max(0.3, length * 0.85);
-    const wingGeo = new THREE.ConeGeometry(span * 0.42, span, 3, 1, false);
+    /**
+     * Shape comes from the theme — feathers on a bird, veined panels on an
+     * insect, panelled hard surfaces on a construct, a membrane on everything
+     * else — and each wing is built as a right wing that the builder reflects
+     * for the left side, so a pair is symmetric by construction rather than by
+     * two separate placements happening to agree.
+     */
+    const style = wingStyleFor(form.theme);
+    const wingMaterials = { membrane: membraneMat, bone: bodyMat, accent: accentMat };
     for (let pair = 0; pair < wingPairs; pair += 1) {
       const zOffset = wingPairs === 1 ? -length * 0.05 : (pair === 0 ? length * 0.16 : -length * 0.24);
+      // A second pair is the hind pair: shorter, so it reads as a pair rather
+      // than as one wing doubled.
+      const pairSpan = span * (pair === 0 ? 1 : 0.76);
       for (const side of [-1, 1]) {
         const pivot = new THREE.Group();
+        // Named so a wing is findable in the scene graph from a debug console.
+        pivot.name = `wing-pivot-${pair}-${side > 0 ? "r" : "l"}`;
         pivot.position.set(side * width * 0.42, spineY, zOffset);
-        const wing = new THREE.Mesh(wingGeo, membraneMat);
-        // The cone is laid flat and swept back, so it reads as a membrane
-        // rather than a spike, and its wide end sits away from the body.
-        wing.rotation.set(Math.PI / 2, 0, Math.PI / 2);
-        wing.scale.set(1, 1, 0.12);
-        wing.position.set(side * span * 0.5, 0, -span * 0.12);
-        pivot.add(wing);
+        const wing = buildWing({ style, span: pairSpan, side, materials: wingMaterials });
+        wing.group.name = `wing-${pair}-${side > 0 ? "r" : "l"}`;
+        pivot.add(wing.group);
         rig.add(pivot);
+        disposables.push(...wing.geometries);
         wings.push({ pivot, side });
       }
     }
-    disposables.push(wingGeo);
   }
 
   /* ---------------------------------------------------------------- spikes */
@@ -3270,13 +3340,29 @@ export function createCharacter(config: CharacterConfig): Character {
       }
 
       for (const [index, arm] of arms.entries()) {
-        const idle = paused ? 0 : Math.sin(breathPhase + index * Math.PI) * 0.16;
+        // The two arms breathe in antiphase, so at any instant one of them is
+        // being carried backward by the idle alone. At rest that is the small
+        // alternating sway it is meant to be; running at full amplitude
+        // *underneath* a strike it is 0.16rad of the wrong direction on the
+        // off arm, which is enough to read as that arm swinging back on its
+        // own. So the sway yields to whatever the move is driving: a creature
+        // throwing a punch is not also idling.
+        const driven = Math.min(1, (Math.abs(c.armSwing) * 1.6 + Math.abs(c.armFold)) * 0.9);
+        const idle = paused ? 0 : Math.sin(breathPhase + index * Math.PI) * 0.16 * (1 - driven);
         // `armAlternate` blends between both arms taking the swing together
         // (0, which is every move written before categories existed) and the
         // lead arm taking all of it while the off arm counters (1). A blend,
         // so a combo can cross from a two-handed move into a one-sided one
         // without the arms snapping across the body.
-        const sided = 1 - c.armAlternate + c.armAlternate * (arm.lead ? 1 : -1);
+        //
+        // The off arm counters at a *fraction*, exactly as the off legs brace
+        // against the lead leg's thrust at `0.34` above. Mirroring it at full
+        // amplitude is what made a punch read as one fist going out and the
+        // other being thrown just as hard out the back of the creature: the
+        // rear hand travelled as far backward as the lead hand travelled
+        // forward, which is not a counter, it is a second punch aimed behind.
+        // A third of the swing is a shoulder rolling back under the drive.
+        const sided = arm.lead ? 1 : 1 - c.armAlternate * (1 + OFF_ARM_COUNTER);
         // Negative, for the same reason the leg thrust above is: positive X on
         // a limb hanging downward swings the hand *behind* the body, and
         // `armSwing` is written the way every other forward channel here is,
