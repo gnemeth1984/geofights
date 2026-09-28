@@ -80,6 +80,16 @@ function spring(t: number, cycles = 3, decay = 7): number {
   return Math.exp(-decay * t) * Math.sin(cycles * Math.PI * 2 * t);
 }
 
+/**
+ * An angle folded into (-π, π] — the shortest way round to the same facing.
+ * What makes a finished revolution and a body that never turned at all the same
+ * pose, which they are.
+ */
+function wrapAngle(radians: number): number {
+  const wrapped = ((radians + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  return wrapped - Math.PI;
+}
+
 /** 0 → 1 → 0 over the life of the move, smoothly. */
 function arc(t: number): number {
   return Math.sin(Math.max(0, Math.min(1, t)) * Math.PI);
@@ -270,6 +280,17 @@ type Channels = {
   lift: number;
   /** Rotate about Y. */
   spin: number;
+  /**
+   * Free yaw, in radians, on top of `spin` — what `tumble` is to `lean`, on the
+   * other axis. `spin` is the few degrees of torso turn that parts of the body
+   * read and counter (the head leads it by a quarter), while a pivot is a whole
+   * revolution that has to end where it started. A full turn written into
+   * `spin` twisted the head 90° with it and unwound backwards through the decay
+   * layer on the way out; kept apart, a body can turn right round and still
+   * carry its own shoulder rotation, and the 2π wrap lands on a channel nothing
+   * else reads.
+   */
+  revolve: number;
   /** Rotate about Z, the weight shift. */
   roll: number;
   /** 1 = flattened and splayed, -1 = stretched tall and thin. */
@@ -341,6 +362,13 @@ type Channels = {
   wingWrap: number;
   /** Tail swinging laterally, -1 to 1. */
   tailSwing: number;
+  /**
+   * Tail extending along its own length, as a fraction — 0.3 is a tail a third
+   * longer than it rests at. A whip is not a rigid bar swung on a hinge: the
+   * length pays out as the crack travels down it, which is what puts the tip on
+   * something standing further away than the tail reaches at rest.
+   */
+  tailReach: number;
   /** Spikes standing out from the back, 0–1. */
   spikeFlare: number;
   /** Emissive parts flaring white-hot, 0–1. */
@@ -363,6 +391,7 @@ function blankChannels(): Channels {
     sway: 0,
     lift: 0,
     spin: 0,
+    revolve: 0,
     roll: 0,
     squash: 0,
     pulse: 0,
@@ -377,6 +406,7 @@ function blankChannels(): Channels {
     wingFlap: 0,
     wingWrap: 0,
     tailSwing: 0,
+    tailReach: 0,
     spikeFlare: 0,
     glowFlash: 0,
     glowDrain: 0,
@@ -452,6 +482,18 @@ function heftFactor(agility: number): number {
   return Math.max(0, Math.min(1, (0.6 - agility) / 0.45));
 }
 
+/**
+ * The window `tail_whip` turns through, and where in it the tail is on the
+ * target.
+ *
+ * Declared up here because three things have to agree on it and they live in
+ * different places: the curve's own crack accent, the pivot that has to be
+ * exactly half way round on the crest of it, and the strike frame the rest of
+ * the game reacts to. `STRIKE_BEATS` spreads this rather than restating it, so
+ * retuning the swing moves the contact and the half-turn with it.
+ */
+const TAIL_WHIP_PASS = { from: 0.26, to: 0.86, bias: 0.62 } as const;
+
 /* ------------------------------------------------------------- core states */
 
 const CORE_CURVES: Record<Exclude<CoreState, "idle">, MoveCurve> = {
@@ -494,7 +536,9 @@ const CORE_CURVES: Record<Exclude<CoreState, "idle">, MoveCurve> = {
     // where a heavy body's long sink belongs.
     leap(c, t, 0.07, 0.42, 0.12 * (1 + air * 0.5), i, 0);
     leap(c, t, 0.47, 0.85, 0.14 * (1 + air * 0.9), i, air >= 0.6 ? 1 : 0, heft);
-    c.spin = t * t * (3 - 2 * t) * Math.PI * 2 * (1 - air * 0.7);
+    // On `revolve`, not `spin`: a whole turn, so the head must not try to lead
+    // it and the decay layer must not unwind it on the way back to idle.
+    c.revolve = t * t * (3 - 2 * t) * Math.PI * 2 * (1 - air * 0.7);
     c.pulse += Math.sin(t * Math.PI * 4) * 0.06 * decay * i;
     c.armFlare = 0.9 * Math.min(1, t * 4) * decay;
     c.armSwing = -spring(t, 2, 1.4) * 0.2;
@@ -550,21 +594,60 @@ const ATTACK_CURVES: Record<AttackMove, MoveCurve> = {
     c.glowFlash = shut * 0.5;
     c.dust = lunge * 0.3;
   },
-  // Load the tail against a body counter-rotation, crack it through, let the
-  // segments whip past on their own lag, then unwind.
+  /**
+   * A whole pivot on the spot, because the tail is behind the creature and a
+   * hinge swing of it never points anywhere near the opponent. The body turns
+   * its back through the target and keeps going, so the tail is carried round
+   * the full circle and the target is standing in it — which is also the only
+   * reading of the move that makes sense of where the damage comes from.
+   *
+   * `revolve` rather than `spin`: this is the whole turn, so nothing that
+   * counters torso rotation should counter it (see the channel's own note).
+   * Deliberately not scaled by intensity either — a fraction of a turn would
+   * leave the creature standing at an angle for the rest of the fight. Only how
+   * hard it is thrown scales; that it comes back round does not.
+   */
   tail_whip: (t, c, i) => {
-    const load = sustain(t, 0, 0.44, 0.5, 0.75);
-    const crack = beat(t, 0.34, 0.76, 0.4);
-    const through = beat(t, 0.62, 0.96, 1.2);
-    const settle = t > 0.7 ? spring((t - 0.7) / 0.3, 1.6, 5) : 0;
-    c.spin = (-load * 0.32 + crack * 0.78 + through * 0.12 + settle * 0.08) * i;
-    c.tailSwing = -load * 0.7 + crack * 1.7 + through * 0.5 + settle * 0.35;
-    c.roll = (load * 0.06 + crack * 0.16 - through * 0.05) * i;
-    c.sway = crack * 0.06 * i;
-    c.lean = (-load * 0.1 + crack * 0.05) * i;
-    c.squash = load * 0.07 - crack * 0.05;
+    const load = sustain(t, 0, TAIL_WHIP_PASS.from + 0.1, 0.5, 0.7);
+    const crack = beat(t, TAIL_WHIP_PASS.from, TAIL_WHIP_PASS.to, TAIL_WHIP_PASS.bias);
+    const through = beat(t, 0.68, 1, 1.2);
+    const settle = t > 0.78 ? spring((t - 0.78) / 0.22, 1.6, 5) : 0;
+    /**
+     * Half the turn by the contact frame and the other half on the way out,
+     * each an eased quarter-cosine so the body is at its fastest exactly as the
+     * tail passes the target rather than stalling there. Taking the crest from
+     * `beatPeak` — the same maths the strike frame is derived with — is what
+     * makes "the tail is pointing at the target when the blow lands" hold by
+     * construction instead of by two numbers that were tuned to agree once.
+     */
+    const peak = beatPeak(TAIL_WHIP_PASS.from, TAIL_WHIP_PASS.to, TAIL_WHIP_PASS.bias);
+    const half =
+      t < peak
+        ? 1 - Math.cos((Math.PI / 2) * (t / peak))
+        : 1 + Math.sin((Math.PI / 2) * ((t - peak) / (1 - peak)));
+    c.revolve = half * Math.PI;
+    // The hips still counter-load and snap on top of the pivot, which is what
+    // keeps a full turn from reading like a model on a lazy Susan.
+    c.spin = (-load * 0.3 + crack * 0.22 + settle * 0.08) * i;
+    // Trailing behind the turn through the wind-up, level with the body on the
+    // frame it connects, then cracking past it — the tip arrives last, and the
+    // spring on this channel is what actually delays it.
+    c.tailSwing = -load * 0.85 + crack * 1.3 + through * 0.9 + settle * 0.35;
+    // The length pays out into the pass, so the tip reaches past where the body
+    // is standing, and draws back in as the turn unwinds.
+    c.tailReach = crack * 0.42 + through * 0.16;
+    // Leaning out of the turn throws the tail wide of the body; a fraction of a
+    // step in on the pass puts the tip on something at arm's length.
+    c.push = (crack * 0.1 - through * 0.04) * i;
+    c.roll = (load * 0.06 + crack * 0.18 - through * 0.05) * i;
+    c.sway = crack * 0.07 * i;
+    c.lean = (-load * 0.12 + crack * 0.06) * i;
+    c.squash = load * 0.09 - crack * 0.06;
     c.lift = crack * 0.03 * i;
     c.armSwing = -load * 0.6 + crack * 0.4;
+    // Arms thrown out by the turn. Nothing keeps them in against a pivot this
+    // fast, and it is most of what reads as the body being flung round.
+    c.armFlare = load * 0.3 + crack * 0.85 + through * 0.4;
     // The tip drags along the ground through the crack, so the scuff runs long.
     c.dust = crack * 0.8 + through * 0.3;
   },
@@ -1269,6 +1352,7 @@ const POSE_KEYS = [
   "sway",
   "lift",
   "spin",
+  "revolve",
   "roll",
   "squash",
   "pulse",
@@ -1283,6 +1367,7 @@ const POSE_KEYS = [
   "wingFlap",
   "wingWrap",
   "tailSwing",
+  "tailReach",
   "spikeFlare",
 ] as const satisfies ReadonlyArray<keyof Channels>;
 
@@ -1498,8 +1583,9 @@ const STRIKE_BEATS: Record<
   swipe: { from: 0.22, to: 0.74, bias: 0.45, weight: 0.44 },
   // `shut` — the jaw closing, not the lunge that carried it there.
   bite: { from: 0.5, to: 0.74, bias: 0.4, weight: 0.56 },
-  // `crack` — the tip coming round, which is the part that hurts.
-  tail_whip: { from: 0.34, to: 0.76, bias: 0.4, weight: 0.62 },
+  // `crack` — the tip coming round, which is the part that hurts, and the frame
+  // the pivot has the creature's back to the target with the tail in it.
+  tail_whip: { ...TAIL_WHIP_PASS, weight: 0.62 },
   // The *second* downbeat. The first is the wings raising for it.
   wing_gust: { from: 0.56, to: 0.92, bias: 0.4, weight: 0.48 },
   spike_burst: { from: 0.24, to: 0.74, bias: 0.35, weight: 0.54 },
@@ -2971,6 +3057,13 @@ export function createCharacter(config: CharacterConfig): Character {
   /** Hand the last rendered pose to the decay layer, starting from now. */
   const carryPose = () => {
     for (const key of POSE_KEYS) residual[key] = prevPose[key];
+    // A pivot that finished is standing at 2π, which is the pose it started in.
+    // Decaying the number rather than the angle would spin the body a whole
+    // turn back the other way over the hand-over, so carry the shortest
+    // equivalent angle: a completed turn carries nothing, and one interrupted
+    // half way carries the half it still has to lose.
+    residual.revolve = wrapAngle(prevPose.revolve);
+    residual.tumble = wrapAngle(prevPose.tumble);
     residualStartedAt = lastElapsed;
   };
 
@@ -3400,6 +3493,10 @@ export function createCharacter(config: CharacterConfig): Character {
         const idleWag = paused ? 0 : Math.sin(elapsed * 1.1) * 0.12;
         tailPivot.rotation.y = idleWag + c.tailSwing * 0.55;
         tailPivot.rotation.x = -c.lean * 0.3 + c.squash * 0.2;
+        // Paying out along its own length. Z only: the tail was authored
+        // running down -Z, so this lengthens it without fattening it, and the
+        // links stretch with it the way a whip does under its own crack.
+        tailPivot.scale.z = 1 + c.tailReach;
         for (const [index, segment] of tailSegments.entries()) {
           // Each link lags further behind the pivot, so a flick travels.
           const { object, lag } = segment;
@@ -3420,7 +3517,9 @@ export function createCharacter(config: CharacterConfig): Character {
       // Lean and tumble are the same axis: a few degrees of weight shift and a
       // whole flip, added rather than one overriding the other, so a body can
       // still be leaning into its landing while it comes out of the rotation.
-      rig.rotation.set(c.lean + c.tumble, c.spin, c.roll);
+      // Same on the yaw axis: `spin` is the torso turn parts of the body read,
+      // `revolve` is a whole pivot, added rather than one overriding the other.
+      rig.rotation.set(c.lean + c.tumble, c.spin + c.revolve, c.roll);
       rig.scale.set(
         (1 + c.squash * 0.5) * (1 + c.pulse),
         (1 - c.squash) * (1 + c.pulse),

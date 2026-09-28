@@ -145,7 +145,7 @@ export const ATTACK_PROFILE: Record<string, AttackProfile> = {
     power: 1.06,
     reachM: 0.66,
     stamina: 16,
-    windupMs: 331,
+    windupMs: 365,
     durationMs: 800,
     recoveryMs: 260,
     critBonus: 0.02,
