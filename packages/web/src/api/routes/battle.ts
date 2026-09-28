@@ -79,14 +79,18 @@ export const battle = {
         ...state,
         /**
          * How long the pad should stay greyed, which has to be how long the
-         * server will actually refuse: the move's own recovery (or a stagger),
-         * with the flat floor underneath it. Reporting the floor alone greyed
-         * a slam for as long as a poke and let the pool refill unseen.
+         * server will actually refuse — and that is the move's own recovery or
+         * a stagger, nothing else.
+         *
+         * It used to carry `ATTACK_COOLDOWN_MS` from the last swing as a floor
+         * on top. The engine has never charged that floor — `requireActable`
+         * reads `recoverUntil` and `staggeredUntil` and no third thing — so
+         * all the floor ever did was grey a button the server would have
+         * accepted. Harmless while every recovery was longer than it; actively
+         * wrong now that a landed hit cancels into a window shorter than it,
+         * because the one press the cancel exists for was the press it ate.
          */
-        attackReadyInMs: Math.max(
-          ready.readyInMs,
-          Math.max(0, ATTACK_COOLDOWN_MS - (now - (state.lastAttackAt?.getTime() ?? 0))),
-        ),
+        attackReadyInMs: ready.readyInMs,
         abilityReadyInMs: Math.max(0, (state.abilityReadyAt?.getTime() ?? 0) - now),
         /** Recovery or stagger — the pad greys out until this hits 0. */
         readyInMs: ready.readyInMs,

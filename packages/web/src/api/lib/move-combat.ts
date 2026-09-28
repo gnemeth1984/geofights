@@ -953,3 +953,61 @@ export const MAX_DEFER_MS = 1_250;
 export function deferMs(move: string): number {
   return Math.min(MAX_DEFER_MS, attackProfile(move).windupMs);
 }
+
+/* ------------------------------------------------------------ hit confirm */
+
+/**
+ * The cancel window, and why a fight needed one.
+ *
+ * Every move charged its duration plus its full recovery no matter what it
+ * did, so a blow that connected and a blow that swung through empty air cost
+ * the attacker exactly the same second and a half of being a statue. Landing
+ * a hit bought nothing but the damage, chains were the engine's to pick, and
+ * an exchange came out as two people taking turns rather than one of them
+ * pressing an advantage.
+ *
+ * So a landed blow pays a fraction of its own recovery, measured from the
+ * frame it connected on rather than from the end of the swing. What that buys
+ * is pressure: the hit is the opening, the player holds it if they keep
+ * hitting, and the moment they whiff they are back to paying the full price —
+ * because a whiff cancels nothing, and neither does a blow the defender
+ * parried, which extends the recovery instead.
+ *
+ * Deliberately a share of what the move still had left to pay at the moment
+ * of contact, rather than a flat number or a share of the recovery alone. A
+ * flat cut would hand the slowest, hardest-hitting moves the largest discount
+ * and make the light ones pointless; a share of the recovery alone barely
+ * registers on a poke whose recovery is a fifth of a second. A share of the
+ * remainder keeps the ordering the table was built around — a slam that
+ * connects is still slower to come out of than a poke that connects — while
+ * being worth pressing for on both.
+ */
+export const HIT_CANCEL_SHARE = 0.45;
+/**
+ * The floor under that share. Below roughly this the body has not finished
+ * the contact frame it is cancelling out of, and the swing would visibly
+ * teleport back to neutral to start the next one.
+ */
+export const HIT_CANCEL_MIN_MS = 150;
+
+/**
+ * When a landed blow lets go of the body that threw it.
+ *
+ * Both sides call this, off the same profile table, so the pad's greying and
+ * the engine's refusal agree to the millisecond. It never returns a deadline
+ * later than the one the full swing already bought — a cancel is a discount
+ * on what is left, never a way to make a move slower than it was.
+ */
+export function hitCancelRecoverAt({
+  strikeAt,
+  fullRecoverAt,
+}: {
+  /** The frame the blow connected on. */
+  strikeAt: number;
+  /** What the move would have cost had it hit nothing. */
+  fullRecoverAt: number;
+}): number {
+  const left = Math.max(0, fullRecoverAt - strikeAt);
+  const cut = Math.max(HIT_CANCEL_MIN_MS, Math.round(left * HIT_CANCEL_SHARE));
+  return Math.min(fullRecoverAt, strikeAt + cut);
+}

@@ -61,6 +61,7 @@ import { compassPoint } from "@/ar/heading";
 import type { Marker } from "@/ar/markers";
 import { useArStage } from "@/hooks/use-ar-stage";
 import { useAvatarVoice } from "@/hooks/use-avatar-voice";
+import { INPUT_BUFFER_MS, useCommitClock } from "@/hooks/use-commit-clock";
 import { useGeo } from "@/hooks/use-geo";
 import { useMatchChannel } from "@/hooks/use-match-channel";
 import { useLandscape } from "@/hooks/use-orientation";
@@ -208,6 +209,10 @@ function exchangeLine(payload: Record<string, unknown>, mine: boolean): string {
   }
   if (payload.cornered === true) parts.push("cornered");
   if (payload.riposte) parts.push("riposte");
+  // The cancel, named. A window the player cannot see is a window they will
+  // never press into, and "chain open" is the shortest way to say that the
+  // hit they just landed bought them the next one.
+  if (mine && payload.cancelled === true) parts.push("chain open");
 
   return parts.join(" · ");
 }
@@ -216,6 +221,7 @@ function exchangeLine(payload: Record<string, unknown>, mine: boolean): string {
 const SPAR_COMBO_CHANCE = 0.35;
 /** How often the bot blocks the player's swing instead of wearing it. */
 const SPAR_GUARD_CHANCE = 0.45;
+
 
 /**
  * What the bot throws next.
@@ -739,36 +745,15 @@ function Play() {
   }, [fullscreenBattle, stage.placed, stage.stage]);
 
   /**
-   * When your own swing lets go of you again.
-   *
-   * The server stamps `recoverUntil` the instant an attack commits and refuses
-   * *everything* until it passes — a guard included. The client cannot learn
-   * that from the poll in time for it to be any use: `myState` answers every
-   * two seconds, and the attack request itself is held open for the length of
-   * its own windup, so by the time either of them speaks, the window where the
-   * player was pressing a dead button has already gone by.
-   *
-   * So the deadline is kept locally, from the press, off the same profile
-   * table the engine charges against: duration plus recovery, which is exactly
-   * what `engine.attack` writes. The poll is still read as a floor — a parry
-   * adds a stagger the client never sees coming — and the longer of the two
-   * wins.
+   * When your own swing lets go of you again, and what to do with a press that
+   * arrives a beat before it does. Both live in the clock — see the hook.
    */
-  const [commitUntil, setCommitUntil] = React.useState(0);
-  const [, tickReady] = React.useReducer((n: number) => n + 1, 0);
-  /** What the server last said, as a moment rather than a countdown. */
-  const polledReadyAt = myState.data ? myState.dataUpdatedAt + myState.data.readyInMs : 0;
-  const readyAt = Math.max(commitUntil, polledReadyAt);
-  /**
-   * Re-render the moment that deadline lands, so the defence row comes back up
-   * with the animation instead of waiting for a poll to notice.
-   */
-  React.useEffect(() => {
-    const left = readyAt - Date.now();
-    if (left <= 0) return;
-    const timer = window.setTimeout(tickReady, left + 30);
-    return () => window.clearTimeout(timer);
-  }, [readyAt]);
+  const clock = useCommitClock({
+    polledReadyInMs: myState.data?.readyInMs ?? null,
+    polledAttackReadyInMs: myState.data?.attackReadyInMs ?? null,
+    polledAt: myState.dataUpdatedAt,
+  });
+  const { commitUntil, setCommitUntil, onBeat, readyAt, attackReadyAt } = clock;
 
   /* --------------------------------------------------- training-only damage */
 
@@ -960,6 +945,21 @@ function Play() {
           const land = () => {
             if (mine) target.playSparringAnimation(reaction);
             else target.playCharacterAnimation(reaction);
+            /*
+             * My blow landed, so my body may already be free again.
+             *
+             * The press guessed the full price of the swing — duration plus
+             * the whole recovery — because that is what a whiff costs and the
+             * press cannot know yet whether this one connects. The server has
+             * since decided, and a hit confirm cut the recovery down: this is
+             * the moment that becomes knowable, and the pad has to come back
+             * up on the contact frame rather than a poll later, or the window
+             * the cancel opened is one the player never sees.
+             */
+            if (mine && typeof event.payload.recoverInMs === "number") {
+              const freeAt = Date.now() + Math.max(0, event.payload.recoverInMs);
+              setCommitUntil((held) => Math.min(held, freeAt));
+            }
             target.registerImpact({ from, state: swing, blocked, resolved: true });
             // The attacker's swing already sounded when the pad was pressed.
             // What the feed adds is the landing, so they hear the impact on
@@ -1012,7 +1012,7 @@ function Play() {
         .splice(0, feedTimers.current.length - 32)
         .forEach((timer) => window.clearTimeout(timer));
     }
-  }, [channel.feed, myPlayerId, stage.stage, voice]);
+  }, [channel.feed, myPlayerId, setCommitUntil, stage.stage, voice]);
 
   // Opening line. Driven by status rather than the `match_started` event so a
   // player who reloads mid-match still hears their character.
@@ -1273,6 +1273,11 @@ function Play() {
    */
   const doAttack = (targetPlayerId: string, moveType?: AnimationState) => {
     if (!matchId) return;
+    onBeat(attackReadyAt, () => throwAttack(targetPlayerId, moveType));
+  };
+
+  const throwAttack = (targetPlayerId: string, moveType?: AnimationState) => {
+    if (!matchId) return;
     setActionNote(null);
     // The swing owns this body from the press, not from the reply: the engine
     // stamped its recovery at the same moment, and everything it refuses in
@@ -1284,22 +1289,35 @@ function Play() {
       setCommitUntil(pressedAt + profile.durationMs + profile.recoveryMs);
     };
     commitTo(moveType ?? FALLBACK_ATTACK);
+    /*
+     * The body swings on the tap, not on the reply.
+     *
+     * It used to wait for `onSuccess`, and `onSuccess` is a round trip that
+     * the server deliberately holds open for the length of the move's own
+     * windup — so the swing began somewhere north of two hundred milliseconds
+     * after the finger came off the button, every single time, and no amount
+     * of animation polish survives that. The press is the move now: it starts
+     * here, and the reply reconciles it.
+     */
+    const pressed = moveType && isAnimationState(moveType) ? moveType : FALLBACK_ATTACK;
+    stage.stage?.playCharacterAnimation(pressed);
+    playCue(cueForMove(pressed, COMBO_MOVES, DEFENSE_MOVES));
+    setPreviewMove(pressed);
     attack.mutate(
       { matchId, targetPlayerId, ...(moveType ? { moveType } : {}), ...spacing() },
       {
-        // Local swing the moment the server accepts it — the call returns the
-        // move the server chose, so the swing starts on the tap instead of
-        // waiting for the feed, and it is the same move the feed will name.
         onSuccess: (result) => {
           const move = isAnimationState(result?.attackType) ? result.attackType : "attack_lurch";
-          stage.stage?.playCharacterAnimation(move);
-          // The swing leaving the body, on the tap. The landing arrives later,
-          // out of the feed, with a sound of its own.
-          playCue(cueForMove(move, COMBO_MOVES, DEFENSE_MOVES));
-          // The pad highlights what resolved, not what was pressed: the engine
-          // chose this move, and pretending otherwise would be a lie the feed
-          // contradicts a second later.
-          setPreviewMove(move);
+          // Only if the engine threw something other than what was pressed:
+          // the swing is already in the air, and restarting it on the reply
+          // would undo the very latency this stopped paying. The pad follows
+          // the correction for the same reason it always did — the feed is
+          // about to name this move, not the pressed one.
+          if (move !== pressed) {
+            stage.stage?.playCharacterAnimation(move);
+            playCue(cueForMove(move, COMBO_MOVES, DEFENSE_MOVES));
+            setPreviewMove(move);
+          }
           // The engine may have thrown something other than what was pressed,
           // and it is the move it threw that holds this body.
           commitTo(move);
@@ -1326,6 +1344,14 @@ function Play() {
    * animated anyway would teach the player a window that was not there.
    */
   const doGuard = (moveType: AnimationState) => {
+    if (!matchId) return;
+    // A guard is the press that most needs the buffer: it is aimed at a blow
+    // already in the air, and the window it has to land in is shorter than the
+    // recovery the player is pressing out of.
+    onBeat(readyAt, () => throwGuard(moveType));
+  };
+
+  const throwGuard = (moveType: AnimationState) => {
     if (!matchId) return;
     setActionNote(null);
     const pressedAt = Date.now();
@@ -1405,8 +1431,17 @@ function Play() {
       : !battleTarget
         ? `no opponent within ${attackRangeM} m`
         : null;
-  const battlePending =
-    attack.isPending || ability.isPending || startMatch.isPending || leaveMatch.isPending;
+  /*
+   * What the pad is waiting on — and a swing in flight is not on the list.
+   *
+   * `attack.isPending` used to be: the request is held open by the server for
+   * the length of the move's own windup, so the whole pad went dead for a
+   * couple of hundred milliseconds of every exchange, on top of the recovery
+   * it was already greying for. The recovery is kept locally now and greys the
+   * rows on its own clock, which is the honest one, so the request being in
+   * flight is no longer anybody's business.
+   */
+  const battlePending = ability.isPending || startMatch.isPending || leaveMatch.isPending;
 
   /* ---------------------------------------------------------------- breath */
 
@@ -1431,7 +1466,7 @@ function Play() {
     : null;
 
   /** How much of your own recovery is left, off the deadline kept above. */
-  const recoverInMs = Math.max(0, readyAt - Date.now());
+  const { recoverInMs, attackReadyInMs } = clock;
 
   /**
    * Why this particular move cannot be thrown.
@@ -1486,10 +1521,12 @@ function Play() {
    * mattered hit a button the server had already refused.
    */
   const guardDisabled =
-    guard.isPending ||
     Boolean(movement?.paused) ||
     Boolean(me && !me.alive) ||
-    recoverInMs > 0;
+    // Live through the last stretch of it: a press in there is caught and
+    // thrown at the deadline rather than dropped, and a button the player
+    // cannot press cannot be caught pressing.
+    recoverInMs > INPUT_BUFFER_MS;
 
   /**
    * Play a move on the stage, score it, and apply none of it. Training only.
@@ -1635,7 +1672,10 @@ function Play() {
                 staminaMax={staminaMax}
                 exchange={exchange}
                 targetName={battleTarget?.avatarName ?? null}
-                attackReadyInMs={myState.data?.attackReadyInMs ?? 0}
+                // Minus the buffer: the attack row goes live for the last
+                // stretch of the cooldown so a press on the beat has a button
+                // to land on, and `doAttack` holds it until the beat.
+                attackReadyInMs={Math.max(0, attackReadyInMs - INPUT_BUFFER_MS)}
                 abilityReadyInMs={myState.data?.abilityReadyInMs ?? 0}
                 ability={hudAbilities[0] ?? null}
                 onAbility={() => {
@@ -1791,7 +1831,7 @@ function Play() {
                   movement={movement}
                   attackRangeM={battleConfig.data?.attackRangeM ?? 30}
                   abilities={((myState.data?.abilities ?? []) as HudAbility[]).filter(Boolean)}
-                  attackReadyInMs={myState.data?.attackReadyInMs ?? 0}
+                  attackReadyInMs={Math.max(0, attackReadyInMs - INPUT_BUFFER_MS)}
                   abilityReadyInMs={myState.data?.abilityReadyInMs ?? 0}
                   onStart={() => matchId && startMatch.mutate({ matchId })}
                   onAttack={doAttack}

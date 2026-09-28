@@ -23,6 +23,7 @@ import {
   defenceProfile,
   deferMs,
   gapForCheck,
+  hitCancelRecoverAt,
   gradeGuard,
   inReach,
   regenPerSecond,
@@ -693,6 +694,19 @@ export async function attack(input: AttackInput) {
   };
   const riposte = connected && verdict.riposte > 0 ? Math.round(swing.damage * verdict.riposte) : 0;
 
+  /*
+   * Hit confirm. A blow that connected and was not parried lets go of the body
+   * early — a fraction of its own recovery from the contact frame, instead of
+   * the whole swing plus the whole recovery — so landing a hit is what buys
+   * the next one and pressure is a thing a player can hold. A whiff pays the
+   * full price it always did, and a parry pays more than that.
+   */
+  const fullRecoverAt = committedAt + profile.durationMs + profile.recoveryMs;
+  const cancelled = connected && landed > 0 && !verdict.stagger;
+  const recoverAt = cancelled
+    ? hitCancelRecoverAt({ strikeAt, fullRecoverAt })
+    : fullRecoverAt;
+
   await db
     .update(schema.battleState)
     .set({
@@ -701,8 +715,9 @@ export async function attack(input: AttackInput) {
       // A parry does not just reduce the blow, it takes the exchange away:
       // the attacker is held in their own recovery for longer than they chose.
       staggeredUntil: verdict.stagger
-        ? new Date(committedAt + profile.durationMs + profile.recoveryMs + STAGGER_MS)
+        ? new Date(fullRecoverAt + STAGGER_MS)
         : striker.staggeredUntil,
+      ...(cancelled ? { recoverUntil: new Date(recoverAt) } : {}),
       updatedAt: new Date(),
     })
     .where(eq(schema.battleState.id, striker.id));
@@ -786,6 +801,18 @@ export async function attack(input: AttackInput) {
       riposte,
       cornered: cornered > 1,
       staminaScale: Math.round(check.scale * 100) / 100,
+      /**
+       * What the attacker has left to wait, from the moment this was sent.
+       *
+       * The client keeps its own copy of the recovery deadline — it has to,
+       * because the poll answers every two seconds and a fight is decided in
+       * less — and it guessed that deadline from the profile table on the
+       * press. A hit confirm changes the answer after the press, so the real
+       * one is sent with the landing rather than left to be discovered on the
+       * next poll, two whole exchanges later.
+       */
+      recoverInMs: Math.max(0, recoverAt - Date.now()),
+      cancelled,
     },
     { message, actorPlayerId: input.playerId, targetPlayerId: input.targetPlayerId },
   );
