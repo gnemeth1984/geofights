@@ -10,6 +10,7 @@ import {
 import { createMarker, placeOnGround, type Marker, type MarkerObject } from "./markers";
 import { installLightRig, type LightRig } from "./lighting";
 import { DASH_MOVES } from "../../api/lib/creature-form";
+import type { DriveBearing } from "@/lib/footwork";
 import {
   ATTACK_PROFILE,
   CLOSE_GUARD_M,
@@ -128,6 +129,36 @@ const MOVE_SPEED_MPS = 1.1;
 const ROAM_RADIUS_M = 2.5;
 /** How fast the stick's reading catches up, per second. Eases the first step. */
 const DRIVE_EASE = 6;
+/**
+ * How far the body tips into the ground it is covering, in radians at full
+ * stick.
+ *
+ * Facing is locked onto the opponent, so the stick no longer turns the body —
+ * which leaves a creature crossing the floor with nothing about it saying that
+ * it is moving, and a body sliding sideways with its feet set is the one thing
+ * that reads as a bug rather than as footwork. This is the tell: it leans into
+ * a step forward, sits back off a step away and rolls into a circling one, in
+ * its own local frame, so the same seven degrees means "advancing" or
+ * "retreating" depending on which way the body is pointed.
+ *
+ * Small on purpose. It is layered under whatever move is playing — the curves
+ * lean the body too — and anything bigger fights them.
+ */
+const TRAVEL_LEAN_RAD = 0.12;
+/**
+ * How far off the middle the stick has to be before a press counts as thrown
+ * in a direction. Well above the walk's own deadzone: a body drifting a
+ * centimetre is still walking, but a blow is not re-chosen on a thumb resting
+ * against the stick.
+ */
+const BEARING_MIN = 0.35;
+/**
+ * The sector a closing or retreating push has to fall in, as a dot product —
+ * 0.5 is 60° either side of the line between the two bodies, so closing,
+ * giving ground and circling take 120° each and the boundaries are where a
+ * thumb has obviously chosen one.
+ */
+const BEARING_TOWARD_DOT = 0.5;
 /** How fast the body turns toward where it wants to look, in radians a second. */
 const TURN_RATE = 8;
 /**
@@ -780,6 +811,10 @@ export class ARStage {
       return;
     }
     this.character = createCharacter(config);
+    // Yaw first, then the travel lean on top of it: in "YXZ" the pitch and roll
+    // are applied in the frame the yaw already turned, which is what makes a
+    // lean mean "forward" for this body rather than "north".
+    this.character.group.rotation.order = "YXZ";
     // A new body starts standing still, whatever the last one was doing.
     this.resetDrive();
     if (standing && this.placed) {
@@ -943,11 +978,16 @@ export class ARStage {
   /**
    * The yaw the player's character wants to be at right now.
    *
-   * One function, three rules, in priority order. Mid-swing it looks at its
-   * opponent — that is the lock-on, and it holds for the length of the move
-   * whatever the stick is doing. Walking, it looks where it is walking.
-   * Otherwise it is squared up: at its opponent if it has one, at the player if
-   * it does not.
+   * One function, three rules, in priority order — and the order is the whole
+   * mechanic. An opponent on the floor outranks everything: a fighter does not
+   * turn their back on the thing trying to hit them to walk somewhere, so with
+   * a body squared up against it the stick never touches facing at all. Pushing
+   * away from the opponent backpedals, pushing across it circles, and the guard
+   * stays pointed the one way that matters throughout.
+   *
+   * Walking only decides facing when there is nobody to face — roaming an empty
+   * room, where looking where you are going is all there is to do. Otherwise it
+   * is squared up: at its opponent if it has one, at the player if it does not.
    *
    * Positions are read in room space for both bodies and in world space for the
    * camera, and `roomGroup` only ever translates — so a yaw computed in either
@@ -957,20 +997,86 @@ export class ARStage {
     const anchor = this.character!;
     const partner = this.sparring;
     const squaredUp = Boolean(partner && this.placed && partner.group.visible);
-    const locked = performance.now() < this.attackLockUntil;
 
-    if (!locked && this.facingMode !== "idle" && this.walking()) {
-      return this.walkYaw + this.aimYaw;
-    }
     if (squaredUp) {
       const here = anchor.group.position;
       const there = partner!.group.position;
       return Math.atan2(there.x - here.x, there.z - here.z) + this.aimYaw;
     }
+    const locked = performance.now() < this.attackLockUntil;
+    if (!locked && this.facingMode !== "idle" && this.walking()) {
+      return this.walkYaw + this.aimYaw;
+    }
     const toCamera = this.camera.position
       .clone()
       .sub(anchor.group.getWorldPosition(new THREE.Vector3()));
     return Math.atan2(toCamera.x, toCamera.z) + this.aimYaw;
+  }
+
+  /**
+   * A stick reading as a direction on the floor, normalised, or null for a
+   * reading too small to have a direction at all.
+   *
+   * Camera-relative: pushing the stick away from you walks the body away from
+   * you, whichever way the phone is pointing. Shared by the walk, the lean and
+   * the bearing the pad reads, because three different derivations of "which
+   * way is the thumb pointing" is three chances for them to disagree about
+   * what the player did.
+   */
+  private driveWorld(drive: { x: number; y: number }): THREE.Vector3 | null {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    forward.y = 0;
+    if (forward.lengthSq() < 1e-4) forward.set(0, 0, -1);
+    forward.normalize();
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    right.y = 0;
+    if (right.lengthSq() < 1e-4) right.set(1, 0, 0);
+    right.normalize();
+
+    const direction = new THREE.Vector3(
+      forward.x * drive.y + right.x * drive.x,
+      0,
+      forward.z * drive.y + right.z * drive.x,
+    );
+    if (direction.lengthSq() < 1e-6) return null;
+    return direction.normalize();
+  }
+
+  /**
+   * Tip the body into the ground it is covering.
+   *
+   * Written in the body's own frame rather than the world's: the travel
+   * direction is rotated out of the facing the body is holding, so the forward
+   * part of it becomes pitch and the sideways part becomes roll. Advance and
+   * the creature leans after its own step; retreat and it sits back over its
+   * heels with its guard still up; circle and it rolls into the turn.
+   *
+   * Only `x` and `z` are touched. `y` is facing and belongs to `stepFacing`,
+   * and the rig underneath is the animation's — so this composes with whatever
+   * move is playing instead of competing with it.
+   */
+  private stepTravelLean() {
+    const body = this.character;
+    if (!body) return;
+    const direction = this.driveWorld(this.driveSmooth);
+    const throttle = Math.min(1, Math.hypot(this.driveSmooth.x, this.driveSmooth.y));
+    if (!direction || throttle < DRIVE_DEADZONE) {
+      body.group.rotation.x = 0;
+      body.group.rotation.z = 0;
+      return;
+    }
+    const yaw = body.group.rotation.y;
+    // A yaw of θ points the body's own forward (local +z) along (sinθ, cosθ)
+    // and its own right (local +x) along (cosθ, -sinθ) — which is the pair of
+    // dot products below, and getting either sign backwards leans a body into
+    // the step it is not taking.
+    const localForward = direction.x * Math.sin(yaw) + direction.z * Math.cos(yaw);
+    const localRight = direction.x * Math.cos(yaw) - direction.z * Math.sin(yaw);
+    const lean = TRAVEL_LEAN_RAD * throttle;
+    body.group.rotation.x = lean * localForward;
+    // Positive roll tips the head to its own left, so circling right is the
+    // negative one.
+    body.group.rotation.z = -lean * localRight;
   }
 
   /** The heading the last movement step walked in. */
@@ -1018,6 +1124,11 @@ export class ARStage {
 
     if (Math.hypot(this.drive.x, this.drive.y) >= DRIVE_DEADZONE) this.lastDriveAt = now;
 
+    // Before the early return, because a body that has just stopped still has
+    // a lean to come out of — and `driveSmooth` decaying to nothing is what
+    // takes it back upright.
+    this.stepTravelLean();
+
     if (!this.walking()) {
       // Let go: ease the facing back to squared-up rather than snapping, then
       // hand facing back to the normal rule.
@@ -1032,25 +1143,9 @@ export class ARStage {
       return;
     }
 
-    // Camera-relative basis: pushing the stick away from you walks the body
-    // away from you, whichever way the phone is pointing.
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    forward.y = 0;
-    if (forward.lengthSq() < 1e-4) forward.set(0, 0, -1);
-    forward.normalize();
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
-    right.y = 0;
-    if (right.lengthSq() < 1e-4) right.set(1, 0, 0);
-    right.normalize();
-
-    const direction = new THREE.Vector3(
-      forward.x * this.driveSmooth.y + right.x * this.driveSmooth.x,
-      0,
-      forward.z * this.driveSmooth.y + right.z * this.driveSmooth.x,
-    );
-    if (direction.lengthSq() < 1e-6) return;
+    const direction = this.driveWorld(this.driveSmooth);
+    if (!direction) return;
     const throttle = Math.min(1, Math.hypot(this.driveSmooth.x, this.driveSmooth.y));
-    direction.normalize();
 
     const next = body.group.position
       .clone()
@@ -1838,6 +1933,11 @@ export class ARStage {
       // Movement has the same problem facing does — a character standing a
       // metre off looks fine in a screenshot — so the walk is readable too.
       drive: { x: this.drive.x, y: this.drive.y },
+      // And which way that push reads as, because the move a press throws now
+      // depends on it and a check has to be able to assert on the sector
+      // rather than on the raw axes.
+      bearing: this.driveBearing(),
+      lean: anchor ? { pitch: anchor.group.rotation.x, roll: anchor.group.rotation.z } : null,
       facingMode: this.facingMode,
       attackLocked: performance.now() < this.attackLockUntil,
       // A dash is the one move that changes where a body is standing, so what
@@ -1959,6 +2059,47 @@ export class ARStage {
       Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
     this.drive.x = clamp(x);
     this.drive.y = clamp(y);
+  }
+
+  /**
+   * Which way the player is pushing, relative to their opponent.
+   *
+   * What the pad reads at the moment of a press to know whether the blow was
+   * thrown advancing, retreating or circling. Four sectors rather than an
+   * angle, because a player cannot aim a thumb to a degree and a move that
+   * changed at 59° and not at 61° would read as a coin toss.
+   *
+   * The stronger of the live reading and the eased one, so the answer survives
+   * the order the fingers actually land in: a thumb that lets go of the stick
+   * as it presses the button still threw a closing blow, and the eased reading
+   * is what remembers that for the tenth of a second it takes.
+   *
+   * `null` for no opponent, no placed body, or a stick too near the middle to
+   * have meant anything.
+   */
+  driveBearing(): DriveBearing {
+    const body = this.character;
+    const partner = this.sparring;
+    if (!body || !this.placed || !partner || !partner.group.visible) return null;
+
+    const live = Math.hypot(this.drive.x, this.drive.y);
+    const eased = Math.hypot(this.driveSmooth.x, this.driveSmooth.y);
+    const held = live >= eased ? this.drive : this.driveSmooth;
+    if (Math.max(live, eased) < BEARING_MIN) return null;
+
+    const direction = this.driveWorld(held);
+    if (!direction) return null;
+    const toPartner = partner.group.position.clone().sub(body.group.position);
+    toPartner.y = 0;
+    if (toPartner.lengthSq() < 1e-6) return null;
+    toPartner.normalize();
+
+    // Dot for how much of the push is along the line between them, cross for
+    // which side of it the rest is on.
+    const along = direction.dot(toPartner);
+    if (along >= BEARING_TOWARD_DOT) return "toward";
+    if (along <= -BEARING_TOWARD_DOT) return "away";
+    return toPartner.x * direction.z - toPartner.z * direction.x > 0 ? "left" : "right";
   }
 
   /**

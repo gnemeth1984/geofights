@@ -67,6 +67,7 @@ import { useMatchChannel } from "@/hooks/use-match-channel";
 import { useLandscape } from "@/hooks/use-orientation";
 import { coarseLabel, distanceM, enuOffset, metres } from "@/lib/geo";
 import { errorMessage } from "@/lib/format";
+import { moveForFootwork, throwableMoves } from "@/lib/footwork";
 import { useMe, useSession, useSignOut } from "@/queries/session";
 import {
   useAttack,
@@ -1264,6 +1265,25 @@ function Play() {
   };
 
   /**
+   * The move a press means, once the stick has had its say.
+   *
+   * Two inputs, one blow. The button names the strike and the stick names the
+   * footwork it is thrown off, so pushing into an opponent turns a swipe into
+   * the lunging swipe, stepping back turns it into whatever this body can
+   * reach with, and circling turns it into the chain that comes round the
+   * side. A centred stick throws exactly what was pressed.
+   *
+   * Read at the press, not at the send: `onBeat` can hold a press for the last
+   * of a cooldown, and the thumb has usually moved on by the time it lands.
+   */
+  const footworkMove = (pressed: AnimationState): AnimationState =>
+    moveForFootwork({
+      pressed,
+      bearing: stage.stage?.driveBearing() ?? null,
+      throwable: throwableMoves(characterMoves),
+    });
+
+  /**
    * Throw the move that was pressed.
    *
    * `moveType` is the change: the pad used to be a single "attack" button and
@@ -1273,7 +1293,8 @@ function Play() {
    */
   const doAttack = (targetPlayerId: string, moveType?: AnimationState) => {
     if (!matchId) return;
-    onBeat(attackReadyAt, () => throwAttack(targetPlayerId, moveType));
+    const move = moveType ? footworkMove(moveType) : moveType;
+    onBeat(attackReadyAt, () => throwAttack(targetPlayerId, move));
   };
 
   const throwAttack = (targetPlayerId: string, moveType?: AnimationState) => {
@@ -1531,7 +1552,12 @@ function Play() {
   /**
    * Play a move on the stage, score it, and apply none of it. Training only.
    */
-  const playPreview = (state: AnimationState) => {
+  const playPreview = (pressed: AnimationState) => {
+    // The training area is where the stick-plus-button mechanic is learnt, so
+    // it resolves footwork on exactly the same terms a fight does — otherwise
+    // the one place a player is free to experiment is the one place the
+    // directions do nothing.
+    const state = footworkMove(pressed);
     setPreviewMove(state);
     stage.stage?.playCharacterAnimation(state);
     playCue(cueForMove(state, COMBO_MOVES, DEFENSE_MOVES));
