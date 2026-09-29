@@ -5,11 +5,14 @@ import { applySkin } from "./skin";
 import { buildLimb, buildSkull, buildSpine, buildTailLink, buildTorso } from "./anatomy";
 import { buildWing, wingStyleFor } from "./wings";
 import {
+  collapseStatics,
   dressHead,
   dressLimb,
   dressSegment,
   dressTorso,
+  mergeGeometries,
   shellMaterial,
+  solo,
   trimMaterial,
   type Dressing,
 } from "./shell";
@@ -2277,7 +2280,7 @@ export function createCharacter(config: CharacterConfig): Character {
     torso.scale.set(width, height, shape.upright ? length * 1.15 : length);
     carrier.add(torso);
     rig.add(carrier);
-    segments.push({ mesh: carrier, offset: 0, baseY: trunkY });
+    segments.push({ mesh: solo(carrier), offset: 0, baseY: trunkY });
     // A block torso wears the same set as a lofted one, but sized 8% past the
     // block's own extents: the plates are patches of an ellipsoid, and an
     // ellipsoid that exactly matches a box's extents is buried inside every
@@ -2313,7 +2316,7 @@ export function createCharacter(config: CharacterConfig): Character {
     trunk.castShadow = true;
     rig.add(trunk);
     disposables.push(trunkGeo);
-    segments.push({ mesh: trunk, offset: 0, baseY: trunkY });
+    segments.push({ mesh: solo(trunk), offset: 0, baseY: trunkY });
     // Chest, back and belt plates, parented to the trunk so the breath and
     // lean channels carry them.
     //
@@ -2352,7 +2355,7 @@ export function createCharacter(config: CharacterConfig): Character {
     for (const [index, bone] of spine.bones.entries()) {
       // The bone already sits at the segment's rest height, so the animation's
       // absolute writes land exactly where they did on the old spheres.
-      segments.push({ mesh: bone, offset: offsets[index]!, baseY: bone.position.y });
+      segments.push({ mesh: solo(bone), offset: offsets[index]!, baseY: bone.position.y });
       // A long body wears banded segment armour rather than the chest-and-belt
       // set, tapering toward the tail the way the body under it does.
       const ring = girth * (1 - (index / segmentCount) * 0.42);
@@ -2555,7 +2558,7 @@ export function createCharacter(config: CharacterConfig): Character {
       const ear = buildBlock(plan.ear, blockCtx);
       pivot.add(ear);
       headGroup.add(pivot);
-      earPivots.push(pivot);
+      earPivots.push(solo(pivot));
     }
   } else {
     const hornGeo = new THREE.ConeGeometry(headR * 0.2, headR * 1.25, 7);
@@ -2643,8 +2646,8 @@ export function createCharacter(config: CharacterConfig): Character {
         rig.add(limb.pivot);
         disposables.push(...limb.geometries);
         legs.push({
-          mesh: limb.pivot,
-          knee: limb.joint,
+          mesh: solo(limb.pivot),
+          knee: solo(limb.joint),
           side,
           phase: pair * 1.7 + (side > 0 ? Math.PI : 0),
           baseY: hipY,
@@ -2704,7 +2707,7 @@ export function createCharacter(config: CharacterConfig): Character {
       // Named so an arm is findable in the scene graph from a debug console.
       limb.pivot.name = `arm-${side > 0 ? "r" : "l"}`;
       limb.joint.name = `elbow-${side > 0 ? "r" : "l"}`;
-      arms.push({ mesh: limb.pivot, elbow: limb.joint, side, baseY, lead: side > 0 });
+      arms.push({ mesh: solo(limb.pivot), elbow: solo(limb.joint), side, baseY, lead: side > 0 });
     }
   }
 
@@ -2743,7 +2746,7 @@ export function createCharacter(config: CharacterConfig): Character {
         pivot.add(wing.group);
         rig.add(pivot);
         disposables.push(...wing.geometries);
-        wings.push({ pivot, side });
+        wings.push({ pivot: solo(pivot), side });
       }
     }
   }
@@ -2783,7 +2786,7 @@ export function createCharacter(config: CharacterConfig): Character {
       spike.scale.setScalar(taper);
       spike.rotation.x = tilt;
       rig.add(spike);
-      spikes.push({ mesh: spike, baseY: y, baseScale: taper, baseTilt: tilt });
+      spikes.push({ mesh: solo(spike), baseY: y, baseScale: taper, baseTilt: tilt });
     }
     disposables.push(spikeGeo);
   }
@@ -2813,7 +2816,7 @@ export function createCharacter(config: CharacterConfig): Character {
     // primitive chain already grew in — so scale is all it takes to fit.
     tailBlock.scale.setScalar(tailDims.length * form.scale);
     tailPivot.add(tailBlock);
-    for (const joint of collectJoints(tailBlock)) tailSegments.push({ object: joint, lag: 0.09 });
+    for (const joint of collectJoints(tailBlock)) tailSegments.push({ object: solo(joint), lag: 0.09 });
   } else if (tailDims.segments > 0) {
     tailPivot.position.set(0, trunkY + height * 0.1, backZ);
     rig.add(tailPivot);
@@ -2834,7 +2837,7 @@ export function createCharacter(config: CharacterConfig): Character {
       segment.position.z = -step * (index + 1);
       segment.position.y = -drop * index;
       tailPivot.add(segment);
-      tailSegments.push({ object: segment, lag: (index + 1) * 0.12 });
+      tailSegments.push({ object: solo(segment), lag: (index + 1) * 0.12 });
       disposables.push(segGeo);
     }
     // A plume tail ends in a fan; a lash ends in a lit barb.
@@ -2865,7 +2868,7 @@ export function createCharacter(config: CharacterConfig): Character {
   const core = new THREE.Mesh(coreGeo, glowMat);
   const coreBaseY = trunkY + height * 0.08;
   core.position.set(0, coreBaseY, shape.upright ? length * 0.34 : frontZ * 0.45);
-  rig.add(core);
+  rig.add(solo(core));
   disposables.push(coreGeo);
 
   /* ------------------------------------------------------------ level tiers */
@@ -2903,53 +2906,85 @@ export function createCharacter(config: CharacterConfig): Character {
       const y = shape.upright ? trunkY + height * 0.42 : trunkY + height * 0.3;
       accessory.position.set(0, y, shape.upright ? length * 0.12 : frontZ * 0.72);
       rig.add(accessory);
-      tierParts.push({ object: accessory, baseY: y });
+      tierParts.push({ object: solo(accessory), baseY: y });
     } else {
       accessory.scale.setScalar(Math.max(width, height) * 0.55);
       accessory.position.set(0, spineY + 0.02 * form.scale, shape.upright ? -length * 0.18 : backZ * 0.35);
       rig.add(accessory);
-      tierParts.push({ object: accessory, baseY: accessory.position.y });
+      tierParts.push({ object: solo(accessory), baseY: accessory.position.y });
     }
   }
 
+  /**
+   * Register one tier as a single mesh.
+   *
+   * Every piece of a tier appears together — `applyForm` toggles the set — and
+   * rides the body's bob together, since the bob writes the same offset onto
+   * each of them. A tier that is one shape in three places therefore has no
+   * reason to cost three meshes: the pieces' own transforms are baked into one
+   * geometry in rig space, and the merged result is what gets toggled and
+   * bobbed. Baked in rig space means the part sits at the origin, so the bob is
+   * the whole of its Y and `baseY` is zero.
+   *
+   * The caller's loose pieces are never added to the rig; they exist only long
+   * enough to carry a transform, and their shared source geometry is disposed
+   * here rather than by them.
+   */
+  const addTier = (minLevel: number, material: THREE.Material, pieces: THREE.Mesh[]) => {
+    const source = pieces[0]?.geometry;
+    const geometry = mergeGeometries(
+      pieces.map((piece) => {
+        piece.updateMatrix();
+        return piece.geometry.clone().applyMatrix4(piece.matrix);
+      }),
+    );
+    source?.dispose();
+    if (!geometry) return;
+    const mesh = new THREE.Mesh(geometry, material);
+    rig.add(solo(mesh));
+    tierParts.push({ object: mesh, baseY: 0 });
+    formTiers.push({ minLevel, parts: [mesh] });
+    disposables.push(geometry);
+  };
+
   // Level 2 — flank plating over the trunk.
   const plateGeo = new THREE.BoxGeometry(width * 0.3, height * 0.42, 0.028 * form.scale);
-  const plates = [-1, 1].map((side) => {
-    const plate = new THREE.Mesh(plateGeo, accentMat);
-    plate.position.set(side * width * 0.42, trunkY + height * 0.05, shape.upright ? length * 0.3 : frontZ * 0.3);
-    plate.rotation.y = side * 0.35;
-    rig.add(plate);
-    tierParts.push({ object: plate, baseY: plate.position.y });
-    return plate;
-  });
-  formTiers.push({ minLevel: 2, parts: plates });
-  disposables.push(plateGeo);
+  addTier(
+    2,
+    accentMat,
+    [-1, 1].map((side) => {
+      const plate = new THREE.Mesh(plateGeo);
+      plate.position.set(side * width * 0.42, trunkY + height * 0.05, shape.upright ? length * 0.3 : frontZ * 0.3);
+      plate.rotation.y = side * 0.35;
+      return plate;
+    }),
+  );
 
   // Level 3 — shoulder crests.
   const crestGeo = new THREE.SphereGeometry(0.075 * form.scale, 12, 9, 0, Math.PI * 2, 0, Math.PI / 2);
-  const crests = [-1, 1].map((side) => {
-    const crest = new THREE.Mesh(crestGeo, bodyMat);
-    crest.position.set(side * (width * 0.5 + 0.02), spineY, shape.upright ? 0 : frontZ * 0.4);
-    crest.rotation.z = side * 0.3;
-    rig.add(crest);
-    tierParts.push({ object: crest, baseY: crest.position.y });
-    return crest;
-  });
-  formTiers.push({ minLevel: 3, parts: crests });
-  disposables.push(crestGeo);
+  addTier(
+    3,
+    bodyMat,
+    [-1, 1].map((side) => {
+      const crest = new THREE.Mesh(crestGeo);
+      crest.position.set(side * (width * 0.5 + 0.02), spineY, shape.upright ? 0 : frontZ * 0.4);
+      crest.rotation.z = side * 0.3;
+      return crest;
+    }),
+  );
 
   // Level 4 — a second row of spines down the back.
   const finGeo = new THREE.ConeGeometry(0.03 * form.scale, 0.15 * form.scale, 5);
-  const fins = [-1, 0, 1].map((slot) => {
-    const fin = new THREE.Mesh(finGeo, glowMat);
-    fin.position.set(slot * width * 0.3, spineY + 0.02 * form.scale, backZ * 0.45);
-    fin.rotation.x = 0.5;
-    rig.add(fin);
-    tierParts.push({ object: fin, baseY: fin.position.y });
-    return fin;
-  });
-  formTiers.push({ minLevel: 4, parts: fins });
-  disposables.push(finGeo);
+  addTier(
+    4,
+    glowMat,
+    [-1, 0, 1].map((slot) => {
+      const fin = new THREE.Mesh(finGeo);
+      fin.position.set(slot * width * 0.3, spineY + 0.02 * form.scale, backZ * 0.45);
+      fin.rotation.x = 0.5;
+      return fin;
+    }),
+  );
 
   // Level 5 — a crest halo that keeps turning above the head.
   const haloGeo = new THREE.TorusGeometry(0.11 * form.scale, 0.012 * form.scale, 8, 24);
@@ -2958,7 +2993,7 @@ export function createCharacter(config: CharacterConfig): Character {
   const haloOffsetY = 0.18 * form.scale;
   halo.position.set(headBase.x, headBase.y + haloOffsetY, headBase.z);
   rig.add(halo);
-  formTiers.push({ minLevel: 5, parts: [halo] });
+  formTiers.push({ minLevel: 5, parts: [solo(halo)] });
   disposables.push(haloGeo);
 
   /** Show the hardware this level has earned, and nothing above it. */
@@ -2972,6 +3007,22 @@ export function createCharacter(config: CharacterConfig): Character {
     glowBoost = clamped >= 5 ? 0.5 : clamped >= 3 ? 0.22 : 0;
   }
   applyForm(config.level ?? 1);
+
+  /* ---------------------------------------------------------- draw calls */
+
+  // The body is finished, so anything still sitting in its own mesh that could
+  // share one with a neighbour is a draw call spent on nothing. Two of these
+  // bodies plus their armour was pushing past two hundred meshes a frame, most
+  // of them a handful of triangles each — the per-part plate merge only ever
+  // looked inside one part, and could not see that a spine ridge's lumps and a
+  // snout's pieces never move relative to each other either.
+  //
+  // Run here rather than as each part is built: the collapse has to see the
+  // finished tree to know a mesh has no animated child, and everything that
+  // does move has marked itself `solo` by now. Nothing after this point is
+  // parented to the rig — the rings, the health bar and the bubble ride the
+  // outer group, which is left alone.
+  collapseStatics(rig, disposables);
 
   /* ---------------------------------------------------- ring and shockwave */
 

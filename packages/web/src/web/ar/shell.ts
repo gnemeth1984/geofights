@@ -134,6 +134,110 @@ export function mergeGeometries(list: THREE.BufferGeometry[]): THREE.BufferGeome
   return merged;
 }
 
+/**
+ * Mark an object as moving under its own power: animated every frame, toggled
+ * by level, or held by a reference that expects to find it where it was put.
+ *
+ * `collapseStatics` leaves anything marked this way alone. The mark goes on the
+ * mover rather than into a list the collapse consults, so a new animated part
+ * declares itself at the point it is built and cannot be forgotten later — a
+ * list in another file would be one edit away from silently swallowing a part
+ * that has to keep its own transform.
+ */
+export function solo<T extends THREE.Object3D>(object: T): T {
+  object.userData.solo = true;
+  return object;
+}
+
+/**
+ * Bake a mesh's local transform into a copy of its geometry, so the result
+ * draws in its parent's space instead of its own.
+ */
+function inParentSpace(mesh: THREE.Mesh): THREE.BufferGeometry {
+  const geometry = mesh.geometry.clone();
+  mesh.updateMatrix();
+  geometry.applyMatrix4(mesh.matrix);
+  return geometry;
+}
+
+/**
+ * Collapse every run of sibling meshes that draws the same way into one mesh.
+ *
+ * The plates on one body part were already merged as they were built, but that
+ * only ever looked inside a single part. A finished body still hangs a dozen
+ * loose primitives off the rig — a spine ridge's lumps, a row of scutes, the
+ * pieces of a snout — each its own mesh, each sharing a material with its
+ * neighbours, each sitting still relative to them for the character's whole
+ * life. Those are draw calls bought for nothing.
+ *
+ * A mesh joins a run only if it is provably not going anywhere by itself:
+ *
+ * - not `solo`-marked, so animated and level-gated parts keep their transforms
+ * - unnamed, since a name is how the animation code finds a joint or a jaw
+ * - childless, because a merged mesh has no transform left to carry a child
+ * - not skinned, whose vertices move against the mesh's own matrix anyway
+ *
+ * and then only with siblings it agrees with on material and draw state, since
+ * one mesh can only have one of each. Groups are never touched, so every
+ * reference the animation layer holds stays pointed at the same object.
+ *
+ * Merged geometries are pushed onto `disposables`. The originals are left to
+ * whoever registered them when they were built — the merge only ever consumes
+ * the transform-baked copies `inParentSpace` hands it, so an original is still
+ * owned, and still disposed, exactly where it always was.
+ */
+export function collapseStatics(root: THREE.Object3D, disposables: { dispose: () => void }[]): number {
+  let saved = 0;
+  const groups: THREE.Object3D[] = [];
+  root.traverse((node) => {
+    if (node.children.length > 1) groups.push(node);
+  });
+
+  for (const parent of groups) {
+    // Keyed on everything a single mesh can only hold one value of. Meshes that
+    // disagree on any of it are left as separate runs rather than merged into
+    // whichever state happened to come first.
+    const runs = new Map<string, THREE.Mesh[]>();
+    for (const child of parent.children) {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh || (mesh as unknown as THREE.SkinnedMesh).isSkinnedMesh) continue;
+      if (mesh.userData.solo === true || mesh.name !== "" || mesh.children.length > 0) continue;
+      if (Array.isArray(mesh.material)) continue;
+      if (!mesh.geometry.getAttribute("position")) continue;
+      const material = mesh.material as THREE.Material;
+      const key = [
+        material.uuid,
+        mesh.visible ? "v" : "-",
+        mesh.castShadow ? "c" : "-",
+        mesh.receiveShadow ? "r" : "-",
+        mesh.renderOrder,
+        mesh.frustumCulled ? "f" : "-",
+      ].join("|");
+      const run = runs.get(key);
+      if (run) run.push(mesh);
+      else runs.set(key, [mesh]);
+    }
+
+    for (const run of runs.values()) {
+      if (run.length < 2) continue;
+      const first = run[0]!;
+      const merged = mergeGeometries(run.map(inParentSpace));
+      if (!merged) continue;
+      for (const mesh of run) parent.remove(mesh);
+      const mesh = new THREE.Mesh(merged, first.material as THREE.Material);
+      mesh.castShadow = first.castShadow;
+      mesh.receiveShadow = first.receiveShadow;
+      mesh.renderOrder = first.renderOrder;
+      mesh.frustumCulled = first.frustumCulled;
+      mesh.visible = first.visible;
+      parent.add(mesh);
+      disposables.push(merged);
+      saved += run.length - 1;
+    }
+  }
+  return saved;
+}
+
 /* -------------------------------------------------------------------- maths */
 
 export type Radii = { rx: number; ry: number; rz: number };
