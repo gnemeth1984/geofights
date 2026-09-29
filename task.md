@@ -52,28 +52,61 @@ included. No animation rewrite, no move retuning.
 - [x] Verify: typecheck, `skin-shot.py` across all six themes (no shader errors),
       `dash-check.py` (dash, combos, facing, cues all pass), draw cost probe.
 
-## Cost, level 5 (heaviest loadout), from `cost-probe.ts`
-| theme | meshes | triangles |
-| --- | --- | --- |
-| dragon | 105 | 14.9k |
-| insect | 85 | 15.9k |
-| beast | 55 | 11.0k |
-| construct | 46 | 9.9k |
-| bird | 43 | 8.5k |
-| elemental | 39 | 6.7k |
+## Cost, level 5 (heaviest loadout)
+Measured after the sculpt pass moved the blocks from stacked primitives onto
+lofted surfaces, which is why the triangle counts are well above the numbers
+this table carried before it: a sculpt buys its silhouette in triangles, and
+triangles were never the scarce thing.
 
-Triangles are nowhere near a budget. Draw calls are the metric to watch: two
-dragons in one fight is ~210 meshes a frame, which is the high end of what a
-mid-range phone wants. Merging the per-part plate meshes further is the lever if
-it ever needs pulling.
+| theme | meshes before merge | meshes | triangles |
+| --- | --- | --- | --- |
+| dragon | 73 | 61 | 21.4k |
+| insect | 71 | 66 | 27.5k |
+| beast | 45 | 40 | 19.5k |
+| construct | 47 | 43 | 24.3k |
+| bird | 77 | 46 | 21.1k |
+| elemental | 53 | 48 | 23.8k |
+| **total** | **366** | **304** | |
+
+Triangles are nowhere near a budget. Draw calls were the metric to watch, and
+the lever has now been pulled — `collapseStatics` took 17% of the meshes out
+across the roster and 40% out of the worst case. Two dragons in one fight is
+~122 meshes a frame rather than ~146. What is left is mostly irreducible: the
+remaining multi-mesh groups are single body parts carrying two materials (shell
+plus glow), and one mesh can only hold one material.
 
 ## Open
-- [ ] Limbs on the four-legged themes still read as a stack of beads at the
-      joints more than a moulded segment.
-- [ ] Cheek plates cut a straight bottom edge across the jaw; a follow of the
-      jawline would read better.
 - [ ] Real on-device FPS pass (the sandbox renders in software, so its frame
       times say nothing about a phone).
+
+## Sculpt and draw-call pass
+Bodies that were assembled out of stacked primitives now read as one merged
+organic silhouette, and the draw calls that assembly cost are gone.
+
+- [x] `armorTorso`, `catEar`, `hornedEar` and `spriteHead` rebuilt as `flesh()`
+      sculpts instead of piles of spheres and boxes, with a new `curl()` helper
+      for horns and tufts. `curl()` needs its tip radius at 1.5x the grid cell
+      or the grid cannot resolve a tip, and its lump-to-lump reach along the
+      path had to go from 0.85 to 1.35 of the step to stop the finer grid
+      showing the individual lumps.
+- [x] Limb segments read as moulded segments rather than a stack of beads at
+      the joints.
+- [x] Cheek plates follow the jawline instead of cutting a straight edge across
+      it at a fixed latitude.
+- [x] `buildNeck`/`NeckSpec` deleted — nothing ever called them. Heads sit
+      directly on the trunk with deliberate overlap, which is what the comment
+      by `headGroup` now says. `buildSpine` was checked at the same time and
+      already lofts one continuous tube, so it was left alone.
+- [x] `collapseStatics` merges every run of sibling meshes that draws the same
+      way once the body is finished; anything animated marks itself `solo()`
+      where it is built, and `addTier` merges each level tier's pieces into one
+      mesh.
+- [x] Verify: typecheck clean, `check:combat` 150/150, `sculpt-check` 24/24,
+      lint at its 4 known pre-existing errors. `anim.ts` (new) digests every
+      vertex in world space across six themes, six states, five time steps and
+      levels 3 and 5 — 192 snapshots, zero drift from the merge. Eight rendered
+      before/after views across six body plans agree pixel for pixel apart from
+      idle-bob and ring phase.
 
 ---
 
