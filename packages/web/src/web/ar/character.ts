@@ -2177,12 +2177,30 @@ export function createCharacter(config: CharacterConfig): Character {
    * proportion being chosen, and the trunk sits wherever a leg that short puts
    * it. Feet land on the floor by construction, at any silhouette or scale.
    */
-  const legLength = floats ? 0 : height * (shape.upright ? 0.66 : 0.42);
+  const legLength = floats ? 0 : height * (shape.upright ? 0.66 : 0.55);
   // A body on four or six legs carries its weight across all of them, so each
-  // one is thinner than the pair a biped stands on. At the quadruped's shorter
-  // leg length the biped's girth makes a limb as wide as it is long, and the
-  // joint masses inside it swell it into a row of beads.
-  const legRadius = Math.min(width, height) * (shape.upright ? 0.27 : 0.17);
+  // one is thinner than the pair a biped stands on.
+  const rawLegRadius = Math.min(width, height) * (shape.upright ? 0.27 : 0.17);
+  /**
+   * A limb segment is never allowed to be shorter than it is wide.
+   *
+   * `buildLimb` splits the leg at the knee, so what the eye reads is one
+   * *segment*, not the whole leg — and at the radii the shape table used to
+   * ask for, a segment came out around 0.7 of its own diameter long. A shape
+   * that much wider than it is tall cannot read as a moulded thigh however
+   * well it is sculpted: it is a ball, and two of them stacked at the knee is
+   * the row of beads the four-legged themes were showing.
+   *
+   * So the girth is clamped against the length rather than trusted from the
+   * table. `SLENDER` is the floor on segment-length ÷ segment-diameter; the
+   * divisor turns it back into a radius through the widest mass `buildLimb`
+   * actually puts in a segment (the hip socket, `r * joint * 0.84`) and the
+   * 0.52 share of the leg the upper segment takes. A silhouette that wants
+   * stubbier legs than this now gets *thinner* ones instead of beaded ones,
+   * and a future shape added to the table cannot reintroduce the bug.
+   */
+  const SLENDER = 1.05;
+  const legRadius = Math.min(rawLegRadius, (legLength * 0.52) / (SLENDER * 2 * 1.25 * 0.84));
   const hipY = legLength + legRadius * 0.24;
   const trunkY = floats
     ? (shape.y + 0.06) * form.scale * (0.85 + sil.h * 0.15)
@@ -2596,11 +2614,10 @@ export function createCharacter(config: CharacterConfig): Character {
             // ankle is two thirds of the hip — the flare at the bottom is the
             // boot's job, not the shin's.
             tipRadius: legRadius * LEG_TAPER,
-            // The joint masses are there to keep the surface unbroken through a
-            // stride, and on a long leg they can bulge proud of the shaft to do
-            // it. On a short one the same bulge is most of the limb, so it is
-            // pulled back to barely past the shaft.
-            joint: legLength > legRadius * 3.4 ? 1.25 : 1.08,
+            // The joint masses keep the surface unbroken through a stride, and
+            // a leg long enough to hide them carries the full bulge. How much
+            // of it a *short* leg can carry is `buildLimb`'s call, not this
+            // one's — it is the half that knows where the knee falls.
             // A paw block brings its own foot, so the lofted one would clash.
             foot: !plan?.foot,
           },
@@ -2658,7 +2675,6 @@ export function createCharacter(config: CharacterConfig): Character {
           length: armLength,
           rootRadius: armRadius,
           tipRadius: armRadius * ARM_TAPER,
-          joint: armLength > armRadius * 3.4 ? 1.25 : 1.08,
         },
         bodyMat,
       );

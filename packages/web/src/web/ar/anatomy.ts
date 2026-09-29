@@ -503,15 +503,41 @@ export type Limb = {
  */
 export function buildLimb(spec: LimbSpec, material: THREE.Material): Limb {
   const { length, rootRadius, tipRadius } = spec;
-  const jointBulge = spec.joint ?? 1.25;
   const upper = length * 0.52;
   const lower = length - upper;
-  // Fillet off the limb's own thickness: a thick leg blends softly, a thin arm
-  // stays an arm instead of being welded into a sausage.
-  const blend = Math.max(0.008, rootRadius * 0.6);
+  /**
+   * How proud of the shaft the joint masses are allowed to sit.
+   *
+   * The caller asks for a bulge, and gets it on a limb long enough to hide it
+   * — but a joint ball is a fixed share of the *radius*, so on a short segment
+   * the same number is most of the segment, and the socket and the knee show
+   * as two knuckles with a waist pinched between them. Rather than trust the
+   * caller's guess, the request is capped by the segment's own slenderness:
+   * at four diameters to a segment the full bulge reads as a joint, and it
+   * eases to none as the segment approaches as wide as it is long.
+   */
+  const slenderness = Math.min(upper, lower) / Math.max(1e-6, rootRadius * 2);
+  const jointBulge = Math.min(
+    spec.joint ?? 1.25,
+    1 + Math.max(0, Math.min(1, (slenderness - 1) / 3)) * 0.25,
+  );
+  /**
+   * Fillet off the limb's own thickness — but never off more of it than the
+   * segment is long.
+   *
+   * The smooth union pushes the surface outward by up to the blend radius
+   * wherever two masses meet, and in a segment this short *every* point is
+   * within blend of two masses. Sized off the radius alone, the fillet came
+   * out around 40% of the segment's own length, which inflated the socket, the
+   * shaft and the knee into a single ball — so the limb read as beads on a
+   * string no matter how cleanly the masses themselves were laid out. Holding
+   * it to a share of the shorter segment keeps the shaft a shaft, and leaves
+   * the blend doing what it is for: softening the joins, not filling them.
+   */
+  const blend = Math.max(0.006, Math.min(rootRadius * 0.6, Math.min(upper, lower) * 0.18));
   // Cell size chosen across the limb rather than along it — the thin axis is
   // the one that decides whether it reads as round.
-  const cell = Math.max(0.006, rootRadius * 0.42);
+  const cell = Math.max(0.005, rootRadius * 0.42);
   const knee = rootRadius * 0.82 * jointBulge;
 
   const pivot = new THREE.Group();
