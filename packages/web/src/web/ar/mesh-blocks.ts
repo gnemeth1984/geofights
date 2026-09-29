@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import type { BlockSet } from "../../api/lib/creature-form";
+import { buildTailLink, lump } from "./anatomy";
+import { sculpt, type Mass, type SculptOptions } from "./sculpt";
 
 /**
  * Mesh block library.
@@ -113,6 +115,35 @@ function ball(radius: number): THREE.SphereGeometry {
   return new THREE.SphereGeometry(radius, 12, 8);
 }
 
+/**
+ * The flesh of a block, as one surface.
+ *
+ * A block used to be a pile of `piece()` calls, and where those pieces shared
+ * the body material they were meant to read as one volume — a skull with
+ * cheeks, a paw with toes, a chest with a haunch behind it. They did not: each
+ * primitive kept its own closed surface, so every overlap drew the ellipse
+ * where the two intersected and the block read as parts glued together.
+ *
+ * Passing the body masses through {@link sculpt} instead resolves them into a
+ * single shell with every join already filleted. It is one mesh out, which is
+ * also cheaper to draw than the pieces it replaces.
+ *
+ * Accent, glow and membrane pieces stay separate primitives on purpose. Those
+ * are trim — plates, claws, brow lines, whisker spots — and trim is *supposed*
+ * to sit on the surface with an edge. Merging them would dissolve the only
+ * thing that gives these blocks their markings.
+ */
+function flesh(
+  ctx: BlockContext,
+  masses: readonly Mass[],
+  material: THREE.Material,
+  options: SculptOptions,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(keep(ctx, sculpt(masses, options)), material);
+  mesh.castShadow = true;
+  return mesh;
+}
+
 /* -------------------------------------------------------------------- heads */
 
 /**
@@ -123,13 +154,29 @@ function catHead(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body, accent } = ctx.materials;
 
-  group.add(piece(ctx, ball(1), body, [0, 0, 0], undefined, [1, 0.94, 0.96]));
-  // Cheeks: what makes the silhouette read feline rather than just spherical.
-  for (const side of [-1, 1]) {
-    group.add(piece(ctx, ball(0.42), body, [side * 0.62, -0.18, 0.28], undefined, [1, 0.85, 0.9]));
-  }
-  // Muzzle.
-  group.add(piece(ctx, ball(0.46), body, [0, -0.18, 0.78], undefined, [1.05, 0.8, 0.85]));
+  // Skull, cheeks and muzzle as one surface. The cheeks are what makes the
+  // silhouette read feline rather than just spherical, and the muzzle is what
+  // makes it a face — neither survives being a ball parked on a ball, because
+  // the intersection ring reads before the shape does.
+  group.add(
+    flesh(
+      ctx,
+      [
+        lump([0, 0, 0], 1, 0.94, 0.96),
+        lump([-0.62, -0.18, 0.28], 0.42, 0.357, 0.378),
+        lump([0.62, -0.18, 0.28], 0.42, 0.357, 0.378),
+        lump([0, -0.18, 0.78], 0.483, 0.368, 0.391),
+      ],
+      body,
+      // Tight, for the reason the sculpted skull is: a soft blend averages the
+      // muzzle back into the cheeks and the face goes flat.
+      { blend: 0.13, cell: 1 / 8, maxCells: 20, uvAxis: "y" },
+    ),
+  );
+  // Where the cranium is, for whatever gets worn on it. The sculpt swallowed
+  // the skull ball that used to answer this by being the biggest mesh in the
+  // group; these are that ball's own centre and radius.
+  group.userData.cranium = { at: [0, 0, 0], r: 1 };
   // Brow line, in accent, so the face has a top edge to read against.
   group.add(piece(ctx, new THREE.BoxGeometry(1.1, 0.12, 0.34), accent, [0, 0.46, 0.62], [-0.32, 0, 0]));
 
@@ -148,11 +195,29 @@ function dragonSnout(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body, accent } = ctx.materials;
 
-  group.add(piece(ctx, ball(0.92), body, [0, 0.05, -0.2], undefined, [1, 0.88, 1]));
-  // The muzzle is a cone laid along +Z — this is what a bite points forward.
+  // Skull and muzzle as one surface. The muzzle was a cone laid along +Z, and
+  // a cone is the worst case for this: a circular base ring sitting on a
+  // sphere, so the join read as a collar around the snout. It is a tapered rod
+  // through the same sculpt now, spanning from inside the skull to where the
+  // cone's apex was, so the snout leaves the head as one continuous taper.
+  //
+  // The tip stays blunt rather than needling to a point. A cone apex is a
+  // single vertex and lit like one; a snout that ends in a small ball reads as
+  // a nose, which is what is wanted at the front of a bite.
   group.add(
-    piece(ctx, new THREE.ConeGeometry(0.6, 1.5, 8), body, [0, -0.08, 0.72], [Math.PI / 2, 0, 0], [1, 1, 0.78]),
+    flesh(
+      ctx,
+      [
+        lump([0, 0.05, -0.2], 0.92, 0.81, 0.92),
+        { kind: "rod", from: [0, -0.04, 0.05], to: [0, -0.08, 1.28], r: 0.56, toR: 0.15 },
+      ],
+      body,
+      { blend: 0.12, cell: 0.12, maxCells: 22, uvAxis: "z" },
+    ),
   );
+  // The cranium, for a crown or a gem: the skull lump, not the snout that now
+  // shares its mesh.
+  group.userData.cranium = { at: [0, 0.05, -0.2], r: 0.92 };
   for (const side of [-1, 1]) {
     group.add(
       piece(ctx, new THREE.BoxGeometry(0.22, 0.14, 0.7), accent, [side * 0.42, 0.42, 0.24], [-0.2, 0, side * 0.2]),
@@ -325,9 +390,22 @@ function smoothTorso(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body } = ctx.materials;
 
-  group.add(piece(ctx, new THREE.SphereGeometry(0.5, 14, 10), body, [0, 0, 0], undefined, [1, 1, 1.12]));
-  group.add(piece(ctx, ball(0.4), body, [0, 0.03, 0.34], undefined, [1, 1, 0.9]));
-  group.add(piece(ctx, ball(0.44), body, [0, -0.02, -0.32], undefined, [1, 1, 0.85]));
+  // Barrel, chest and haunch in one sculpt. The three were already overlapping
+  // hard enough to read as one mass from the front, but in three-quarter and
+  // side views — which is most of a fight — the two intersection rings ran
+  // right across the flank.
+  group.add(
+    flesh(
+      ctx,
+      [
+        lump([0, 0, 0], 0.5, 0.5, 0.56),
+        lump([0, 0.03, 0.34], 0.4, 0.4, 0.36),
+        lump([0, -0.02, -0.32], 0.44, 0.44, 0.374),
+      ],
+      body,
+      { blend: 0.09, cell: 0.09, maxCells: 20, uvAxis: "z" },
+    ),
+  );
 
   return group;
 }
@@ -413,10 +491,20 @@ function pawHand(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body, accent } = ctx.materials;
 
-  group.add(piece(ctx, ball(0.62), body, [0, 0, 0], undefined, [1, 0.85, 1.05]));
-  for (const slot of [-1, 0, 1]) {
-    group.add(piece(ctx, ball(0.22), body, [slot * 0.32, -0.26, 0.34]));
-  }
+  // Pad and toes as one surface. The blend is deliberately small: enough to
+  // fillet each toe into the pad, not enough to fill the valleys between them.
+  // Merge a paw too softly and the toes stop being toes — it becomes a mitten.
+  group.add(
+    flesh(
+      ctx,
+      [
+        lump([0, 0, 0], 0.62, 0.527, 0.651),
+        ...[-1, 0, 1].map((slot) => lump([slot * 0.32, -0.26, 0.34], 0.22, 0.22, 0.22)),
+      ],
+      body,
+      { blend: 0.07, cell: 0.1, maxCells: 18, uvAxis: "y" },
+    ),
+  );
   group.add(piece(ctx, ball(0.34), accent, [0, -0.42, 0.05], undefined, [1.1, 0.35, 1.1]));
 
   return group;
@@ -427,10 +515,17 @@ function pawFoot(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body, accent } = ctx.materials;
 
-  group.add(piece(ctx, ball(0.58), body, [0, -0.12, 0.08], undefined, [1, 0.6, 1.3]));
-  for (const slot of [-1, 0, 1]) {
-    group.add(piece(ctx, ball(0.2), body, [slot * 0.3, -0.2, 0.55]));
-  }
+  group.add(
+    flesh(
+      ctx,
+      [
+        lump([0, -0.12, 0.08], 0.58, 0.348, 0.754),
+        ...[-1, 0, 1].map((slot) => lump([slot * 0.3, -0.2, 0.55], 0.2, 0.2, 0.2)),
+      ],
+      body,
+      { blend: 0.07, cell: 0.1, maxCells: 18, uvAxis: "y" },
+    ),
+  );
   group.add(piece(ctx, ball(0.3), accent, [0, -0.32, 0.1], undefined, [1.2, 0.3, 1.3]));
 
   return group;
@@ -441,7 +536,20 @@ function clawHand(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body, accent } = ctx.materials;
 
-  group.add(piece(ctx, new THREE.BoxGeometry(0.7, 0.4, 0.62), body));
+  // The palm was a literal box. Hard corners are the point on a claw hand, but
+  // a box is six flat faces and the one facing the key light went dead flat
+  // against a body that curves everywhere else — it read as a crate with
+  // claws in it. Two masses now: a palm and a knuckle ridge across the front,
+  // so the wedge keeps its hard read from the knuckle line and the claws
+  // rather than from being a cuboid.
+  group.add(
+    flesh(
+      ctx,
+      [lump([0, 0, -0.04], 0.34, 0.2, 0.28), lump([0, -0.04, 0.22], 0.35, 0.15, 0.13)],
+      body,
+      { blend: 0.05, cell: 0.07, maxCells: 16, uvAxis: "y" },
+    ),
+  );
   for (const slot of [-1, 0, 1]) {
     group.add(
       piece(ctx, new THREE.ConeGeometry(0.1, 0.62, 5), accent, [slot * 0.24, -0.36, 0.3], [-1.05, 0, slot * 0.18]),
@@ -474,10 +582,22 @@ function tailSpine(
     joint.position.z = index === 0 ? 0 : -step;
     joint.rotation.x = options.curl;
     const radius = options.girth * (1 - (index / options.joints) * 0.6);
-    // Each bead is stretched to just over its own joint's length, so the spine
-    // reads as one tapering tube instead of a string of separated balls — the
-    // taper alone would leave gaps between the thinner joints near the tip.
-    joint.add(piece(ctx, ball(radius), material, [0, 0, -step / 2], undefined, [1, 1, (step * 0.62) / radius]));
+    const nextRadius = options.girth * (1 - ((index + 1) / options.joints) * 0.6);
+    // One tapered link per joint, spanning past its neighbours on both sides.
+    //
+    // This was a ball per joint, stretched along Z to close the gaps the taper
+    // opened up. Stretched spheres butted end to end are still beads: the seam
+    // lands at the widest point of each one, which is exactly where the eye
+    // reads the outline. The link reaches behind its own joint and past the
+    // next, so consecutive links interpenetrate and the silhouette stays shut
+    // through a whip crack.
+    //
+    // No droop is passed: a block tail gets its arc from `curl` on each joint,
+    // compounding outward, so a link that also curved in its own geometry
+    // would double the bend.
+    const link = new THREE.Mesh(keep(ctx, buildTailLink({ radius, nextRadius, step, drop: 0 })), material);
+    link.castShadow = true;
+    joint.add(link);
     parent.add(joint);
     parent = joint;
   }

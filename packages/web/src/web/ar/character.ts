@@ -1814,6 +1814,21 @@ const TRUNK_COMPACT = 0.72;
  *
  * World matrices are the caller's job to have refreshed.
  */
+/**
+ * The cranium a head block declares, in its own unit space, if it declares one.
+ *
+ * Only sculpted heads do. They have to: the point of a sculpt is that the
+ * skull is not a separate object any more, so nothing about the mesh says where
+ * the cranium ends and the muzzle begins.
+ */
+function craniumHint(node: THREE.Object3D): { at: readonly [number, number, number]; r: number } | null {
+  const hint = node.userData?.cranium as { at?: unknown; r?: unknown } | undefined;
+  if (!hint || typeof hint.r !== "number" || !Array.isArray(hint.at) || hint.at.length !== 3) return null;
+  const [x, y, z] = hint.at as number[];
+  if ([x, y, z].some((v) => typeof v !== "number")) return null;
+  return { at: [x, y, z], r: hint.r };
+}
+
 function bulkiestPiece(node: THREE.Object3D): THREE.Object3D | null {
   let best: THREE.Object3D | null = null;
   let bestVol = 0;
@@ -2374,12 +2389,24 @@ export function createCharacter(config: CharacterConfig): Character {
     // as the block's bulkiest single piece — a head block is a big ball with
     // smaller features hung off it — and the helmet is sized and placed on
     // that, off width and height only.
+    //
+    // A sculpted head has no bulkiest piece to find: skull, cheeks and muzzle
+    // are one mesh there by design, so measuring it is measuring the whole
+    // head again and the crown creeps forward onto the face. Those blocks say
+    // where their cranium is instead, and the measurement is the fallback for
+    // the ones still assembled out of separate balls.
     headBlock.updateWorldMatrix(true, true);
-    const skull = bulkiestPiece(headBlock) ?? headBlock;
-    const box = new THREE.Box3().setFromObject(skull);
-    const raw = box.getSize(new THREE.Vector3());
-    wornR = (Math.max(raw.x, raw.y) || 1) * 0.5 * skullR;
-    box.getCenter(wornAt).multiplyScalar(skullR);
+    const cranium = craniumHint(headBlock);
+    if (cranium) {
+      wornR = cranium.r * skullR;
+      wornAt.set(cranium.at[0], cranium.at[1], cranium.at[2]).multiplyScalar(skullR);
+    } else {
+      const skull = bulkiestPiece(headBlock) ?? headBlock;
+      const box = new THREE.Box3().setFromObject(skull);
+      const raw = box.getSize(new THREE.Vector3());
+      wornR = (Math.max(raw.x, raw.y) || 1) * 0.5 * skullR;
+      box.getCenter(wornAt).multiplyScalar(skullR);
+    }
     headBlock.scale.setScalar(skullR);
     headGroup.add(headBlock);
     head = headBlock;

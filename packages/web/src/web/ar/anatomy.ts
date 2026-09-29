@@ -210,7 +210,7 @@ export type TorsoSpec = {
 };
 
 /** An ellipsoidal lump, described by its three radii rather than a scale. */
-function lump(
+export function lump(
   at: readonly [number, number, number],
   rx: number,
   ry: number,
