@@ -358,12 +358,24 @@ const buffers = new Map<string, AudioBuffer>();
 /** In flight or given up on, so a 404 is not retried on every press. */
 const fetching = new Set<string>();
 
+/**
+ * Bumped whenever the recordings themselves change.
+ *
+ * These live in `public/`, which the bundler copies through under their own
+ * names rather than hashing, so `/sfx/punch.mp3` is the same URL forever. A
+ * browser that fetched the old take once will keep answering from its own
+ * cache — the file on the server being different is not something it checks.
+ * Appending the revision makes a new cut a new URL, which is the only way an
+ * already-installed client hears it.
+ */
+const SFX_REV = 2;
+
 function load(ctx: AudioContext, file: string) {
   if (buffers.has(file) || fetching.has(file)) return;
   fetching.add(file);
   void (async () => {
     try {
-      const res = await fetch(`/sfx/${file}.mp3`);
+      const res = await fetch(`/sfx/${file}.mp3?v=${SFX_REV}`);
       if (!res.ok) return;
       const bytes = await res.arrayBuffer();
       buffers.set(file, await ctx.decodeAudioData(bytes));
