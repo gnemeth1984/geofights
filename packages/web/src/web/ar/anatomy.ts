@@ -1,5 +1,7 @@
 import * as THREE from "three";
 
+import { type Mass, sculpt } from "./sculpt";
+
 /**
  * Anatomy: continuous procedural bodies, built from maths at runtime.
  *
@@ -195,59 +197,96 @@ export type TorsoSpec = {
   upright: boolean;
   /** 0 lean, 1 heavy. Drives how far the chest and haunches swell. */
   bulk: number;
+  /**
+   * Where limbs leave the body, in the trunk's own space.
+   *
+   * The shoulder and hip masses used to be spheres parented to the *limb*,
+   * pushed into the chest to hide the join — two surfaces crossing, which is a
+   * hard crease exactly where a body should be softest. Given the anchors, the
+   * trunk grows its own shoulder shelf and haunches instead, so the mass that
+   * covers the join is part of the same surface as the ribs.
+   */
+  sockets?: ReadonlyArray<{ at: readonly [number, number, number]; r: number }>;
 };
 
+/** An ellipsoidal lump, described by its three radii rather than a scale. */
+function lump(
+  at: readonly [number, number, number],
+  rx: number,
+  ry: number,
+  rz: number,
+): Mass {
+  return { kind: "ball", at, r: 1, scale: [Math.max(1e-3, rx), Math.max(1e-3, ry), Math.max(1e-3, rz)] };
+}
+
 /**
- * The trunk as one surface.
+ * The trunk as one continuous surface.
  *
- * Upright bodies are lofted bottom-up: hips, waist, ribcage, chest, shoulders.
- * The waist pinch and the chest swell are what stop an upright creature
- * reading as a barrel — they are small numbers, but they are the difference
- * between a body and a bin.
+ * Described as overlapping masses — hips, waist, ribcage, chest, shoulder
+ * shelf, plus a socket lump wherever a limb leaves — and resolved into a single
+ * shell by {@link sculpt}'s smooth union. Nothing in the result records where
+ * one mass stopped: the waist pinch, the chest swell and the haunches are all
+ * one skin, and every limb join arrives already filleted.
  *
- * Horizontal bodies are lofted the same way and then laid down, so the axis
- * runs rump to chest with the ribcage widest just behind the shoulder, the way
- * a four-legged animal carries its weight.
+ * This replaces a lofted ring stack. The loft was continuous along its own axis
+ * but could only ever be a tube: it had no way to carry a shoulder that stands
+ * proud of the ribs, so the shoulders had to be separate balls, which is what
+ * made the bodies read as assembled parts.
  */
 export function buildTorso(spec: TorsoSpec): THREE.BufferGeometry {
   const { width, height, length, upright, bulk } = spec;
   const swell = 0.9 + bulk * 0.35;
   const pinch = 1 - bulk * 0.12;
-
-  if (upright) {
-    const halfW = width * 0.5;
-    const halfD = length * 0.5;
-    // Stations bottom to top, as a share of trunk height.
-    const rings: Ring[] = [
-      { y: -height * 0.5, rx: halfW * 0.78 * swell, rz: halfD * 0.82, z: -length * 0.01 },
-      { y: -height * 0.3, rx: halfW * 0.9 * swell, rz: halfD * 0.92, z: length * 0.01 },
-      { y: -height * 0.08, rx: halfW * 0.8 * pinch, rz: halfD * 0.8 * pinch, z: 0 },
-      { y: height * 0.16, rx: halfW * 0.98 * swell, rz: halfD * 1.0 * swell, z: length * 0.03 },
-      { y: halfD > 0 ? height * 0.38 : height * 0.38, rx: halfW * 1.0, rz: halfD * 0.94, z: length * 0.02 },
-      { y: height * 0.5, rx: halfW * 0.72, rz: halfD * 0.7, z: 0 },
-    ];
-    return loft(rings, { capStart: true, capEnd: true, capRise: 0.55 });
-  }
-
-  // Laid down: loft along Y first, then rotate so +Y becomes forward (+Z).
   const halfW = width * 0.5;
   const halfH = height * 0.5;
-  const rings: Ring[] = [
-    // Rump, dropping toward the tail root.
-    { y: -length * 0.5, rx: halfW * 0.72 * swell, rz: halfH * 0.74, z: -height * 0.04 },
-    { y: -length * 0.28, rx: halfW * 0.94 * swell, rz: halfH * 0.96 * swell, z: -height * 0.02 },
-    // Belly: narrower than the haunches and the ribs, which is what gives a
-    // four-legged body a waist when seen from above.
-    { y: -length * 0.05, rx: halfW * 0.84 * pinch, rz: halfH * 0.9, z: 0 },
-    // Ribcage, the widest point, sitting just behind the shoulder.
-    { y: length * 0.2, rx: halfW * 1.0 * swell, rz: halfH * 1.0 * swell, z: height * 0.02 },
-    { y: length * 0.38, rx: halfW * 0.88, rz: halfH * 0.9, z: height * 0.05 },
-    // Chest, tapering into where the neck will sit.
-    { y: length * 0.5, rx: halfW * 0.66, rz: halfH * 0.68, z: height * 0.07 },
-  ];
-  const geometry = loft(rings, { capStart: true, capEnd: true, capRise: 0.5 });
-  geometry.rotateX(Math.PI / 2);
-  return geometry;
+  const halfD = length * 0.5;
+  // The fillet that hides every join. Scaled off the body's smallest dimension
+  // so a lithe creature does not get welded into a sausage.
+  const blend = Math.min(0.12, Math.max(0.012, Math.min(width, height, length) * 0.3));
+  const masses: Mass[] = [];
+
+  if (upright) {
+    // Bottom to top: haunches, waist, ribcage, shoulder shelf.
+    masses.push(
+      lump([0, -halfH * 0.58, -length * 0.02], halfW * 0.84 * swell, halfH * 0.46, halfD * 0.88),
+      lump([0, -halfH * 0.14, 0], halfW * 0.76 * pinch, halfH * 0.32, halfD * 0.76 * pinch),
+      lump([0, halfH * 0.24, length * 0.04], halfW * 0.96 * swell, halfH * 0.4, halfD * 0.98 * swell),
+      lump([0, halfH * 0.56, length * 0.01], halfW * 0.9, halfH * 0.4, halfD * 0.8),
+      // Belly: a little mass low and forward, so the front of the body is not a
+      // straight line from chest to hip.
+      lump([0, -halfH * 0.3, halfD * 0.22], halfW * 0.6 * swell, halfH * 0.3, halfD * 0.62),
+    );
+  } else {
+    // Laid down: the same stations, but along Z with the ribcage just behind
+    // the shoulder, which is where a four-legged body carries its weight.
+    masses.push(
+      lump([0, 0, -halfD * 0.66], halfW * 0.76 * swell, halfH * 0.78, halfD * 0.42),
+      lump([0, -height * 0.04, -halfD * 0.2], halfW * 0.86 * pinch, halfH * 0.88, halfD * 0.4),
+      lump([0, height * 0.02, halfD * 0.24], halfW * 0.98 * swell, halfH * 0.98 * swell, halfD * 0.44),
+      lump([0, height * 0.06, halfD * 0.66], halfW * 0.7, halfH * 0.72, halfD * 0.4),
+    );
+  }
+
+  for (const socket of spec.sockets ?? []) {
+    // Anchors are clamped into the trunk's own box before they are used: a leg
+    // that starts a long way below the body is a long leg, not a reason for the
+    // hips to stretch down to the floor after it.
+    const x = Math.max(-halfW, Math.min(halfW, socket.at[0]));
+    const y = Math.max(-halfH * 0.92, Math.min(halfH * 0.92, socket.at[1]));
+    const z = Math.max(-halfD, Math.min(halfD, socket.at[2]));
+    // Deliberately smaller than the limb that lands on it, and pulled inboard:
+    // the shelf only has to cover the join. Sized to reach the limb and it
+    // swallows the arm instead, and the body loses the outline that says it has
+    // arms at all.
+    masses.push(lump([x * 0.7, y, z], socket.r * 0.72, socket.r * 0.8, socket.r * 0.86));
+  }
+
+  return sculpt(masses, {
+    blend,
+    cell: Math.max(width, height, length) / 24,
+    maxCells: 30,
+    uvAxis: upright ? "y" : "z",
+  });
 }
 
 /* --------------------------------------------------------------------- neck */
@@ -329,38 +368,49 @@ export type Limb = {
 };
 
 /**
- * A limb in two tapered segments with a real joint between them.
+ * A limb in two sculpted segments with a real joint between them.
  *
- * The old legs were one capsule positioned at its own middle, so a swing
- * rotated the leg about its centre — the foot went forward and the hip went
- * backward, through the body. Here the pivot sits at the top where a hip
- * belongs, the shaft tapers, and a ball of mass at the knee and at the hip
- * keeps the surface unbroken at every angle the joint reaches.
+ * Two meshes, not four. A limb has to bend, so it cannot be a single surface —
+ * but everything on one side of the knee now is: the hip socket, the thigh and
+ * the top half of the knee are one sculpt, and the bottom of the knee, the
+ * shank and the foot are another. What used to be four primitives crossing
+ * each other at three visible creases is now one crease-free shape per segment,
+ * and the only remaining overlap is ball-inside-ball at the knee, which reads
+ * as a joint rather than as a seam however far it swings.
+ *
+ * The pivot still sits at the top where a hip belongs, so a swing carries the
+ * foot forward without driving the hip back through the body.
  */
 export function buildLimb(spec: LimbSpec, material: THREE.Material): Limb {
   const { length, rootRadius, tipRadius } = spec;
   const jointBulge = spec.joint ?? 1.25;
   const upper = length * 0.52;
   const lower = length - upper;
+  // Fillet off the limb's own thickness: a thick leg blends softly, a thin arm
+  // stays an arm instead of being welded into a sausage.
+  const blend = Math.max(0.008, rootRadius * 0.6);
+  // Cell size chosen across the limb rather than along it — the thin axis is
+  // the one that decides whether it reads as round.
+  const cell = Math.max(0.006, rootRadius * 0.42);
+  const knee = rootRadius * 0.82 * jointBulge;
 
   const pivot = new THREE.Group();
 
-  // Hip / shoulder mass. Sits at the pivot so it never moves off the body,
-  // which is what hides the join no matter how far the limb swings.
-  const socketGeo = new THREE.SphereGeometry(rootRadius * jointBulge, 10, 8);
-  const socket = new THREE.Mesh(socketGeo, material);
-  socket.castShadow = true;
-  pivot.add(socket);
-
-  // Thigh / upper arm: lofted downward from the pivot, swelling at the top.
-  const upperGeo = loft(
+  // Hip / shoulder, thigh and the upper half of the knee, as one surface. The
+  // socket mass sits on the pivot so it never moves off the body, which is
+  // what keeps the join to the trunk covered at any angle.
+  const upperGeo = sculpt(
     [
-      { y: -upper, rx: rootRadius * 0.74, rz: rootRadius * 0.74 },
-      { y: -upper * 0.62, rx: rootRadius * 0.82, rz: rootRadius * 0.86 },
-      { y: -upper * 0.2, rx: rootRadius * 1.0, rz: rootRadius * 1.04 },
-      { y: 0, rx: rootRadius * 0.94, rz: rootRadius * 0.98 },
+      // The socket no longer has to be big enough to hide the join on its own —
+      // the trunk grows its own shelf to meet it — so it is barely proud of the
+      // shaft, which is what keeps a limb reading as a limb.
+      lump([0, 0, 0], rootRadius * jointBulge * 0.84, rootRadius * jointBulge * 0.8, rootRadius * jointBulge * 0.84),
+      { kind: "rod", from: [0, -rootRadius * 0.2, 0], to: [0, -upper, 0], r: rootRadius * 0.95, toR: rootRadius * 0.7 },
+      // Belly of the thigh, forward and slightly outboard of the shaft.
+      lump([0, -upper * 0.38, rootRadius * 0.12], rootRadius * 0.92, upper * 0.3, rootRadius * 0.98),
+      lump([0, -upper, 0], knee * 0.92, knee * 0.86, knee * 0.92),
     ],
-    { radial: 10 },
+    { blend, cell, maxCells: 26, uvAxis: "y" },
   );
   const upperMesh = new THREE.Mesh(upperGeo, material);
   upperMesh.castShadow = true;
@@ -370,45 +420,31 @@ export function buildLimb(spec: LimbSpec, material: THREE.Material): Limb {
   joint.position.y = -upper;
   pivot.add(joint);
 
-  const kneeGeo = new THREE.SphereGeometry(rootRadius * 0.82 * jointBulge, 10, 8);
-  const knee = new THREE.Mesh(kneeGeo, material);
-  knee.castShadow = true;
-  joint.add(knee);
-
-  // Shank / forearm, tapering to the ankle.
-  const lowerGeo = loft(
-    [
-      { y: -lower, rx: tipRadius * 0.9, rz: tipRadius * 0.95 },
-      { y: -lower * 0.55, rx: tipRadius * 1.05, rz: tipRadius * 1.15 },
-      { y: 0, rx: rootRadius * 0.78, rz: rootRadius * 0.8 },
-    ],
-    { radial: 10 },
-  );
+  // Knee underside, shank and foot, again as one surface.
+  const lowerMasses: Mass[] = [
+    lump([0, 0, 0], knee * 0.88, knee * 0.84, knee * 0.88),
+    { kind: "rod", from: [0, 0, 0], to: [0, -lower, 0], r: rootRadius * 0.76, toR: tipRadius * 0.92 },
+    // Calf: mass behind the shin, high up, which is where a leg carries it.
+    lump([0, -lower * 0.34, -tipRadius * 0.3], tipRadius * 1.0, lower * 0.26, tipRadius * 1.15),
+  ];
+  if (spec.foot) {
+    // A foot, so the body stands on something instead of ending in a point.
+    // Flattened and pushed forward of the ankle, like a real one is.
+    lowerMasses.push(
+      lump([0, -lower + tipRadius * 0.15, tipRadius * 0.5], tipRadius * 1.2, tipRadius * 0.62, tipRadius * 1.85),
+    );
+  }
+  const lowerGeo = sculpt(lowerMasses, {
+    blend: blend * 0.85,
+    cell: Math.max(0.006, tipRadius * 0.46),
+    maxCells: 26,
+    uvAxis: "y",
+  });
   const lowerMesh = new THREE.Mesh(lowerGeo, material);
   lowerMesh.castShadow = true;
   joint.add(lowerMesh);
 
-  const geometries = [socketGeo, upperGeo, kneeGeo, lowerGeo];
-
-  if (spec.foot) {
-    // A foot, so the body stands on something instead of ending in a point.
-    // Lofted flat and pushed forward of the ankle, like a real one is.
-    const footGeo = loft(
-      [
-        { y: -tipRadius * 0.7, rx: tipRadius * 1.1, rz: tipRadius * 1.6, z: tipRadius * 0.5 },
-        { y: 0, rx: tipRadius * 1.25, rz: tipRadius * 2.0, z: tipRadius * 0.7 },
-        { y: tipRadius * 0.8, rx: tipRadius * 1.0, rz: tipRadius * 1.3, z: tipRadius * 0.2 },
-      ],
-      { radial: 10, capStart: true, capEnd: true, capRise: 0.35 },
-    );
-    const footMesh = new THREE.Mesh(footGeo, material);
-    footMesh.castShadow = true;
-    footMesh.position.y = -lower;
-    joint.add(footMesh);
-    geometries.push(footGeo);
-  }
-
-  return { pivot, joint, geometries };
+  return { pivot, joint, geometries: [upperGeo, lowerGeo] };
 }
 
 /* -------------------------------------------------------------- spine chain */

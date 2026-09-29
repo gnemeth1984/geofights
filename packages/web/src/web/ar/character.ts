@@ -2173,6 +2173,56 @@ export function createCharacter(config: CharacterConfig): Character {
     ? (shape.y + 0.06) * form.scale * (0.85 + sil.h * 0.15)
     : hipY + height * (shape.upright ? 0.3 : 0.17);
 
+  // Chibi arms are short and thick — they read as reaching mid-thigh, not past
+  // the knee — and are sized off the body like the legs are, so they stay in
+  // proportion at every silhouette rather than at a fixed radius. `armSpan`
+  // scales that: 1 is the default reach, and the form's parser pushes it out to
+  // ~1.4 for a body the player said has long arms.
+  //
+  // Decided here, alongside the leg proportions, because the trunk needs the
+  // shoulder anchors to grow its own sockets before the arms themselves exist.
+  const armLength = height * 0.62 * form.armSpan;
+  // Reach and thickness trade off, or a long arm reads as a longer club rather
+  // than a longer arm. Partial, not proportional — an arm that thins in step
+  // with its length ends up a wire.
+  const armRadius = Math.min(width, height) * 0.22 * (1 - (form.armSpan - 1) * 0.3);
+
+  /**
+   * Where every limb leaves the trunk, in the trunk's own space.
+   *
+   * These are the same anchors the limb pivots are placed at further down, and
+   * they are handed to the torso so the shoulder shelf and haunches are part of
+   * the trunk's *own* surface. Before this, the mass covering each join was a
+   * sphere parented to the limb and shoved into the chest — two surfaces
+   * crossing, a hard crease exactly where a body should be softest, which is
+   * what made the creatures read as stacked parts rather than one animal.
+   */
+  const limbSockets: Array<{ at: [number, number, number]; r: number }> = [];
+  if (!floats) {
+    const legPairs = form.limbCount / 2;
+    for (let pair = 0; pair < legPairs; pair += 1) {
+      const spread = legPairs === 1 ? 0 : (pair / (legPairs - 1) - 0.5) * length * 0.72;
+      for (const side of [-1, 1]) {
+        limbSockets.push({
+          at: [side * (width * 0.34 + legRadius), hipY - trunkY, spread],
+          r: legRadius * 1.1,
+        });
+      }
+    }
+  }
+  if (form.arms) {
+    for (const side of [-1, 1]) {
+      limbSockets.push({
+        at: [
+          side * (width * 0.42 + armRadius * 0.6),
+          height * 0.26,
+          shape.upright ? 0 : length * 0.25,
+        ],
+        r: armRadius * 1.15,
+      });
+    }
+  }
+
   /* ----------------------------------------------------------------- trunk */
 
   /**
@@ -2223,6 +2273,7 @@ export function createCharacter(config: CharacterConfig): Character {
             length,
             upright: shape.upright,
             bulk: form.bodyShape === "bulky" ? 1 : form.bodyShape === "lithe" ? 0.1 : 0.5,
+            sockets: limbSockets,
           });
     const trunk = new THREE.Mesh(trunkGeo, bodyMat);
     trunk.position.y = trunkY;
@@ -2573,16 +2624,9 @@ export function createCharacter(config: CharacterConfig): Character {
     lead: boolean;
   }> = [];
   if (form.arms) {
-    // Chibi arms are short and thick — they read as reaching mid-thigh, not
-    // past the knee — and are sized off the body like the legs are, so they
-    // stay in proportion at every silhouette rather than at a fixed radius.
-    // `armSpan` scales that: 1 is the default reach, and the form's parser
-    // pushes it out to ~1.4 for a body the player said has long arms.
-    const armLength = height * 0.62 * form.armSpan;
-    // Reach and thickness trade off, or a long arm reads as a longer club
-    // rather than a longer arm. Partial, not proportional — an arm that thins
-    // in step with its length ends up a wire.
-    const armRadius = Math.min(width, height) * 0.22 * (1 - (form.armSpan - 1) * 0.3);
+    // `armLength` and `armRadius` are decided up in the proportions block,
+    // because the trunk grows a shoulder socket at each one before the arms
+    // are built.
     for (const side of [-1, 1]) {
       const limb = buildLimb(
         {
