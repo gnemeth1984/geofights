@@ -2372,8 +2372,8 @@ export function createCharacter(config: CharacterConfig): Character {
   //
   // A head this size has no neck to stand on — it sits straight down onto the
   // shoulders and overlaps the chest slightly, so there is never a gap between
-  // the two and never a stalk holding the skull up. That overlap is why the
-  // `buildNeck` the anatomy module offers is deliberately not used here.
+  // the two and never a stalk holding the skull up. The overlap is the join:
+  // a lofted neck between the two would only add a seam at each end.
   const headBase = shape.upright
     ? new THREE.Vector3(0, trunkY + height / 2 + headR * 0.72, length * 0.06)
     : new THREE.Vector3(0, trunkY + height * 0.28, frontZ + headR * 0.7);

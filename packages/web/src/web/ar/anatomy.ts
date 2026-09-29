@@ -409,57 +409,6 @@ export function buildTailLink(spec: TailLinkSpec): THREE.BufferGeometry {
   );
 }
 
-/* --------------------------------------------------------------------- neck */
-
-export type NeckSpec = {
-  /** Where the neck leaves the trunk, in rig space. */
-  from: THREE.Vector3;
-  /** Where it meets the skull, in rig space. */
-  to: THREE.Vector3;
-  /** Half-width at the trunk end. */
-  rootRadius: number;
-  /** Half-width at the skull end. */
-  tipRadius: number;
-};
-
-/**
- * A neck, which the bodies did not have at all — the head simply hovered over
- * the trunk. Lofted along the line between the two, slightly S-curved and
- * thicker at the root, and deliberately overshooting into both the trunk and
- * the skull so neither join can show a seam.
- *
- * Returned as a mesh already positioned and aimed in rig space, so the caller
- * only has to add it. It is not parented to the head: the head group is
- * animated and a neck that swung with it would tear out of the chest.
- */
-export function buildNeck(spec: NeckSpec): { geometry: THREE.BufferGeometry; quaternion: THREE.Quaternion; position: THREE.Vector3 } {
-  const span = spec.from.distanceTo(spec.to);
-  const length = Math.max(0.02, span);
-  const rings: Ring[] = [];
-  const stations = 5;
-  for (let step = 0; step <= stations; step += 1) {
-    const t = step / stations;
-    // Cubic ease from root to tip: thick where it leaves the body, slim at the
-    // skull, with the taper front-loaded the way a real neck's is.
-    const radius = spec.rootRadius + (spec.tipRadius - spec.rootRadius) * (t * t * (3 - 2 * t));
-    rings.push({
-      y: -length * 0.12 + length * 1.12 * t,
-      rx: radius,
-      // Necks are deeper than they are wide, and the curve pushes the middle
-      // forward so the head sits ahead of the chest rather than straight up.
-      rz: radius * 1.12,
-      z: Math.sin(t * Math.PI) * length * 0.08,
-    });
-  }
-  const geometry = loft(rings, { radial: 10 });
-  const direction = spec.to.clone().sub(spec.from).normalize();
-  const quaternion = new THREE.Quaternion().setFromUnitVectors(
-    new THREE.Vector3(0, 1, 0),
-    direction,
-  );
-  return { geometry, quaternion, position: spec.from.clone() };
-}
-
 /* --------------------------------------------------------------------- limb */
 
 export type LimbSpec = {
