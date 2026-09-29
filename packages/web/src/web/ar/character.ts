@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { createSpeechBubble } from "./speech";
 import { blockPlanFor, buildBlock, type BlockContext } from "./mesh-blocks";
 import { applySkin } from "./skin";
-import { buildLimb, buildSpine, buildTorso } from "./anatomy";
+import { buildLimb, buildSkull, buildSpine, buildTailLink, buildTorso } from "./anatomy";
 import { buildWing, wingStyleFor } from "./wings";
 import {
   dressHead,
@@ -2393,27 +2393,25 @@ export function createCharacter(config: CharacterConfig): Character {
     // the skull is a sphere, squashed a little taller than wide and swelled at
     // the back the way the references are, and the snout it used to be is now a
     // much smaller feature hung on the front of it.
-    const headGeo = new THREE.SphereGeometry(headR, 20, 16);
-    headGeo.scale(0.94, 1.04, 1.0);
+    //
+    // Skull and muzzle are one sculpt rather than two spheres. The snout used
+    // to be its own ball parked on the front of the head, and at this scale
+    // that seam ran straight across the face — the most looked-at part of the
+    // creature wearing the most obvious join on it.
+    //
+    // A construct and an insect get no muzzle: one wears a flat visor, the
+    // other a smooth chitin dome.
+    const snouted = form.theme !== "construct" && form.theme !== "insect";
+    const headGeo = buildSkull({
+      radius: headR,
+      muzzle: snouted,
+      cheeks: snouted ? 1 : 0.45,
+    });
     const headMesh = new THREE.Mesh(headGeo, bodyMat);
     headMesh.castShadow = true;
     headGroup.add(headMesh);
     disposables.push(headGeo);
     head = headMesh;
-
-    // Muzzle: a short rounded snout on the front of the skull, for the themes
-    // that want a face pushed forward. A construct and an insect do not — one
-    // wears a flat visor, the other a smooth chitin dome.
-    const snouted = form.theme !== "construct" && form.theme !== "insect";
-    if (snouted) {
-      const muzzleGeo = new THREE.SphereGeometry(headR * 0.46, 14, 10);
-      muzzleGeo.scale(1, 0.78, 1.15);
-      const muzzle = new THREE.Mesh(muzzleGeo, bodyMat);
-      muzzle.position.set(0, -headR * 0.22, headR * 0.78);
-      muzzle.castShadow = true;
-      headGroup.add(muzzle);
-      disposables.push(muzzleGeo);
-    }
 
     // Jaw: hinged at the back of the muzzle so a bite swings it open. The hinge
     // is a plain group, because the bite channel writes `jaw.rotation.x` — so
@@ -2777,13 +2775,21 @@ export function createCharacter(config: CharacterConfig): Character {
     tailPivot.position.set(0, trunkY + height * 0.1, backZ);
     rig.add(tailPivot);
     const step = (tailDims.length * form.scale) / tailDims.segments;
+    // How far the chain sinks per link. The links are siblings laid out along
+    // -Z, so each one has to be told the droop rather than inheriting it.
+    const drop = step * 0.28;
     for (let index = 0; index < tailDims.segments; index += 1) {
       const ratio = index / tailDims.segments;
-      const radius = tailDims.girth * form.scale * (1 - ratio * 0.65);
-      const segGeo = new THREE.SphereGeometry(Math.max(0.012, radius), 10, 8);
+      const radius = Math.max(0.012, tailDims.girth * form.scale * (1 - ratio * 0.65));
+      const nextRatio = (index + 1) / tailDims.segments;
+      const nextRadius = Math.max(0.01, tailDims.girth * form.scale * (1 - nextRatio * 0.65));
+      // A tapered link that reaches back behind its own joint and forward past
+      // the next one, so the chain overlaps itself into a single taper instead
+      // of reading as the row of beads a sphere per joint gave.
+      const segGeo = buildTailLink({ radius, nextRadius, step, drop });
       const segment = new THREE.Mesh(segGeo, index === tailDims.segments - 1 && form.glow > 0.4 ? glowMat : bodyMat);
       segment.position.z = -step * (index + 1);
-      segment.position.y = -step * index * 0.28;
+      segment.position.y = -drop * index;
       tailPivot.add(segment);
       tailSegments.push({ object: segment, lag: (index + 1) * 0.12 });
       disposables.push(segGeo);

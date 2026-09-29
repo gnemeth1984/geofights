@@ -289,6 +289,126 @@ export function buildTorso(spec: TorsoSpec): THREE.BufferGeometry {
   });
 }
 
+/* -------------------------------------------------------------------- skull */
+
+export type SkullSpec = {
+  /** Head radius. The skull is built around this and squashed from it. */
+  radius: number;
+  /** A muzzle pushed out of the front of the skull, for themes that want one. */
+  muzzle: boolean;
+  /** Cheek volume either side, 0 for a smooth dome. */
+  cheeks: number;
+};
+
+/**
+ * The skull as one surface, muzzle included.
+ *
+ * The muzzle was a second sphere parked on the front of the head sphere, and at
+ * chibi proportions — where the head *is* the character — that join was the
+ * most visible crease on the whole body, right in the middle of the face. Here
+ * the skull, the cheeks and the muzzle are masses in one sculpt, so the snout
+ * grows out of the face instead of being stuck to it.
+ *
+ * The jaw stays a separate mesh: it is hinged and animated, and nothing that
+ * swings can be part of the surface it swings away from.
+ */
+export function buildSkull(spec: SkullSpec): THREE.BufferGeometry {
+  const r = spec.radius;
+  const masses: Mass[] = [
+    lump([0, 0, 0], r * 0.94, r * 1.04, r),
+    // Back of the skull, which is where the references carry their weight.
+    lump([0, r * 0.06, -r * 0.3], r * 0.9, r * 0.92, r * 0.82),
+  ];
+  if (spec.cheeks > 0) {
+    for (const side of [-1, 1]) {
+      masses.push(
+        lump(
+          [side * r * 0.56, -r * 0.16, r * 0.24],
+          r * 0.4 * spec.cheeks,
+          r * 0.34 * spec.cheeks,
+          r * 0.38 * spec.cheeks,
+        ),
+      );
+    }
+  }
+  if (spec.muzzle) {
+    // One mass, sized and placed where the old muzzle sphere was. What was
+    // wrong with the two-sphere head was the crease where the sphere met the
+    // face, not the snout it made: a ball this wide protruding this far is
+    // what reads as a snout on a head this round, and the tight blend below
+    // is enough to fillet the join without changing the profile.
+    //
+    // A muzzle split into a bridge and a tip was tried first and spread wider
+    // and shallower than this — the face read flat, which is the opposite of
+    // the point. It sits high for the jaw's sake: the jaw is a separate hinged
+    // mesh under the snout, and the only thing on a primitive face that reads
+    // as a mouth, so a muzzle reaching further down swallows it and a bite
+    // animates nothing.
+    masses.push(lump([0, -r * 0.22, r * 0.82], r * 0.47, r * 0.37, r * 0.55));
+  }
+  return sculpt(masses, {
+    // A face is read closer than anything else on the body, so it is the one
+    // part worth spending cells on. The blend is tight for the same reason:
+    // the fillet is meant to round the join, not to average the snout into
+    // the skull.
+    blend: r * 0.14,
+    cell: r / 11,
+    maxCells: 30,
+    uvAxis: "y",
+  });
+}
+
+/* ---------------------------------------------------------------- tail link */
+
+export type TailLinkSpec = {
+  /** Radius at this link's own joint. */
+  radius: number;
+  /** Radius at the next joint out. */
+  nextRadius: number;
+  /** Distance to the next joint along -Z. */
+  step: number;
+  /** How far the chain drops per link, so the link can follow the droop. */
+  drop: number;
+};
+
+/**
+ * One link of a tail, as a solid that spans the gap to its neighbours.
+ *
+ * A tail has to be a chain — the whip lag is the whole point, and lag needs
+ * separately rotatable pieces — but it does not have to be a row of beads,
+ * which is what a sphere per joint looked like. Each link is a tapered rod
+ * running from *behind* its own joint to *past* the next one, so consecutive
+ * links interpenetrate by about a quarter of their length. The overlap is what
+ * closes the silhouette at rest and keeps it closed through a swing.
+ */
+export function buildTailLink(spec: TailLinkSpec): THREE.BufferGeometry {
+  const { radius, nextRadius, step, drop } = spec;
+  const back = step * 0.34;
+  const front = step * 1.18;
+  return sculpt(
+    [
+      {
+        kind: "rod",
+        from: [0, (drop * back) / step, back],
+        to: [0, -(drop * front) / step, -front],
+        r: radius,
+        toR: Math.max(radius * 0.4, nextRadius * 0.96),
+      },
+      // A little mass on the joint itself, kept *inside* the rod's own surface.
+      // It exists to fill the inner corner when the chain bends — a link wider
+      // than the rod that runs through it would scallop the silhouette at every
+      // joint, which is the bead chain again by another name.
+      lump([0, 0, 0], radius * 0.86, radius * 0.84, radius * 0.84),
+    ],
+    {
+      blend: radius * 0.5,
+      cell: Math.max(0.004, radius * 0.4),
+      maxCells: 22,
+      uvAxis: "z",
+    },
+  );
+}
+
 /* --------------------------------------------------------------------- neck */
 
 export type NeckSpec = {
