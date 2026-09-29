@@ -3,11 +3,15 @@
  *
  * Two layers, in this order:
  *
- *   1. Recorded cues in `public/sfx` — cinematic creature foley: roars,
- *      crunches, body slams. This is what a fight actually sounds like. All
- *      sixteen of them together are about 220 KB, mono, under a second and a
- *      half each, so they cost roughly one photo to download and are decoded
- *      once into memory rather than per press.
+ *   1. Recorded cues in `public/sfx` — dry, close-miked fight foley. Impacts
+ *      are built the way a film builds them, a crack over a body thud over a
+ *      short low end, and the creature vocals are real predator throat rather
+ *      than a synthesised growl. Almost no tail on any of them: the transient
+ *      is the sound, and a decaying room would turn an exchange thrown every
+ *      second and a half into mud. All twenty-two together are about 175 KB,
+ *      mono, peak-normalised to -1 dBFS, none longer than a second and a half,
+ *      so they cost roughly one photo to download and are decoded once into
+ *      memory rather than per press.
  *   2. The synthesised cues below, kept as a fallback. A phone that loses the
  *      network mid-match, a decode a browser refuses, a cue that has no file —
  *      all of them still make a noise instead of a silent swing.
@@ -137,11 +141,9 @@ const SAMPLES: Record<Cue, { files: string[]; gain: number }> = {
   training_hit: { files: ["training_hit"], gain: 0.5 },
   bot_growl: { files: ["bot_growl", "reaction"], gain: 0.7 },
   aura_pulse: { files: ["aura_pulse"], gain: 0.85 },
-  // No recording of its own yet. Moved air is the closest thing in the set, and
-  // the claw on the end of it is the other half — so the dash borrows both and
-  // the random pick makes a repeated dash sound like two different dashes
-  // rather than one loop.
-  dash_whoosh: { files: ["gust", "swipe"], gain: 0.7 },
+  // One recording that carries the whole move: the gritty scrape of the
+  // approach, then the strike arriving on the end of it.
+  dash_whoosh: { files: ["dash_whoosh"], gain: 0.75 },
 
   /* The category strikes. A fist and a boot are the two cues in the set that
    * fire most often — every humanoid throws them and the combos throw them in
