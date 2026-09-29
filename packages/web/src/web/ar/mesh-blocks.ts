@@ -235,12 +235,43 @@ function dragonSnout(ctx: BlockContext): THREE.Group {
   return group;
 }
 
-/** Round sprite head: an oversized smooth dome with a small crown ridge. */
+/**
+ * Round sprite head: an oversized dome with a small crown ridge.
+ *
+ * The dome was a literal sphere, which is the one head in the set that had no
+ * seams to fix and no shape either — a ball with a face decal, and at chibi
+ * proportions it is most of the character. Sculpted, it keeps the round
+ * silhouette the sprite wants but carries a brow over the eyes, a little
+ * temple width and a narrower lower face, so the light has something to break
+ * on and the face reads as sitting *in* a head rather than printed on a
+ * balloon.
+ */
 function spriteHead(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body, glow } = ctx.materials;
 
-  group.add(piece(ctx, new THREE.SphereGeometry(1.05, 14, 10), body, [0, 0.05, 0], undefined, [1, 0.98, 0.98]));
+  group.add(
+    flesh(
+      ctx,
+      [
+        lump([0, 0.08, 0], 1.02, 1.0, 0.98),
+        // Brow, over where the face block puts its eyes.
+        lump([0, 0.16, 0.66], 0.72, 0.3, 0.42),
+        // Temples, a touch wider than the dome at eye height.
+        lump([-0.6, 0.06, 0.22], 0.36, 0.42, 0.44),
+        lump([0.6, 0.06, 0.22], 0.36, 0.42, 0.44),
+        // Narrower toward the chin, so the dome is not a perfect ball.
+        lump([0, -0.72, 0.16], 0.58, 0.34, 0.56),
+      ],
+      body,
+      // Generous. This one is *meant* to resolve into a single soft dome; the
+      // features are inflections in it, not parts of it.
+      { blend: 0.3, cell: 1 / 8, maxCells: 22, uvAxis: "y" },
+    ),
+  );
+  // Where the cranium is, for whatever gets worn on it — the sculpt has no
+  // sphere left to read it off.
+  group.userData.cranium = { at: [0, 0.08, 0], r: 1.02 };
   group.add(piece(ctx, new THREE.TorusGeometry(0.5, 0.06, 6, 14), glow, [0, 0.82, 0], [Math.PI / 2, 0, 0]));
 
   const jaw = new THREE.Group();
@@ -255,49 +286,118 @@ function spriteHead(ctx: BlockContext): THREE.Group {
 /* --------------------------------------------------------------------- ears */
 
 /**
- * Curved cat ear: two stacked cone sections with the upper one bent back, so
- * the ear reads as a curved shell rather than a straight spike. Every bend is
- * around X only, which keeps the block symmetric across the head's centre line
- * — the renderer can then hang the same block on both sides at opposite tilts
- * instead of mirroring `scale.x`, which would invert the lighting.
+ * Masses along a sweeping taper — an ear shell, a horn, anything that leaves
+ * the skull and curls.
+ *
+ * These used to be built as a chain of nested cone sections, each one parked
+ * inside the last at a slight rotation. That is the cheapest way to get a
+ * curve and the worst way to show one: every section boundary drew the ellipse
+ * where two closed cones intersected, so a horn read as three cones threaded
+ * on a stick, and the harder it curled the wider those rings opened.
+ *
+ * Laying overlapping lumps along the path instead lets {@link sculpt} find one
+ * surface down the whole curl. `flat` squashes the cross-section front to back
+ * for an ear — it is applied per lump rather than by scaling the finished mesh,
+ * because scaling the mesh would squash the sweep along with the thickness and
+ * flatten the curl itself out of the block.
+ */
+function curl(
+  options: {
+    /** How far the tip stands off the base. */
+    height: number;
+    /** Cross-section radius where it leaves the head. */
+    rootRadius: number;
+    /**
+     * Cross-section radius at the tip.
+     *
+     * Keep it at roughly 1.5× the sculpt's `cell` or more. The grid carries one
+     * vertex per cell that the surface crosses, so a tip thinner than a cell
+     * has no cells of its own to be built out of: it comes out as a lopsided
+     * nub rather than a point, and no amount of blend tuning hides it. A tip
+     * that is blunt by a cell and a half reads as a point at the size these
+     * blocks are drawn; a sub-cell one reads as damage.
+     */
+    tipRadius: number;
+    /** How far back the tip sweeps, as a share of the height. */
+    sweep: number;
+    /** Thickness front-to-back relative to across. 1 is round. */
+    flat?: number;
+    /** How many lumps to lay down the path. */
+    steps?: number;
+  },
+): Mass[] {
+  const { height, rootRadius, tipRadius, sweep } = options;
+  const flat = options.flat ?? 1;
+  const steps = options.steps ?? 6;
+  const masses: Mass[] = [];
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index / steps;
+    // Radius eased rather than linear: a straight taper on a curl reads as a
+    // traffic cone, where a real horn holds its girth and then lets go.
+    const r = rootRadius + (tipRadius - rootRadius) * (t * t * 0.55 + t * 0.45);
+    masses.push(
+      lump(
+        // Quadratic sweep: leaves the skull upright, bends as it goes.
+        [0, t * height, -sweep * height * t * t],
+        r,
+        // Along the path each lump has to reach past its neighbour's centre,
+        // not merely touch its surface. Two lumps that only touch still leave
+        // a waist between them, and the surface beads exactly the way the
+        // cones used to ring — so the reach is a step and a third, not the
+        // step itself. At the thin end this also makes the cap prolate, which
+        // is what lets the tip come to a point while its cross-section stays
+        // wide enough for the grid to resolve.
+        Math.max(r, (height / steps) * 1.35),
+        r * flat,
+      ),
+    );
+  }
+  return masses;
+}
+
+/**
+ * Curved cat ear: one shell that leaves the skull upright and bends back, with
+ * the inner ear set into it.
+ *
+ * The sweep is in Z only, which keeps the block symmetric across the head's
+ * centre line — the renderer can then hang the same block on both sides at
+ * opposite tilts instead of mirroring `scale.x`, which would invert the
+ * lighting.
  */
 function catEar(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body, accent } = ctx.materials;
 
-  // Lower shell: narrow enough that a pair does not span the whole skull, and
-  // flattened front-to-back the way an ear is.
-  group.add(piece(ctx, new THREE.ConeGeometry(0.28, 0.66, 7), body, [0, 0.31, 0], undefined, [1, 1, 0.62]));
-  // Inner ear, pushed slightly forward out of the shell.
+  group.add(
+    flesh(
+      ctx,
+      curl({ height: 1.02, rootRadius: 0.28, tipRadius: 0.095, sweep: 0.22, flat: 0.6, steps: 7 }),
+      body,
+      { blend: 0.045, cell: 0.055, maxCells: 32, uvAxis: "y" },
+    ),
+  );
+  // Inner ear, pushed slightly forward out of the shell. Accent, so it stays
+  // its own surface — the edge where it meets the shell is the marking.
   group.add(piece(ctx, new THREE.ConeGeometry(0.17, 0.44, 7), accent, [0, 0.26, 0.07], undefined, [1, 1, 0.4]));
-
-  const tip = new THREE.Group();
-  tip.position.y = 0.58;
-  tip.rotation.x = -0.3;
-  tip.add(piece(ctx, new THREE.ConeGeometry(0.16, 0.46, 7), body, [0, 0.21, 0], undefined, [1, 1, 0.62]));
-  group.add(tip);
 
   return group;
 }
 
-/** Horned ear: a three-section curl that sweeps back off the skull. */
+/** Horned ear: one curl that sweeps back off the skull. */
 function hornedEar(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { accent } = ctx.materials;
 
-  let parent: THREE.Group = group;
-  let radius = 0.26;
-  for (let index = 0; index < 3; index += 1) {
-    const joint = new THREE.Group();
-    joint.position.y = index === 0 ? 0 : 0.36;
-    // Sweep is around X only, so the block stays symmetric across the head's
-    // centre line and both sides can use it unmirrored.
-    joint.rotation.x = -0.3;
-    joint.add(piece(ctx, new THREE.ConeGeometry(radius, 0.42, 6), accent, [0, 0.2, 0]));
-    parent.add(joint);
-    parent = joint;
-    radius *= 0.68;
-  }
+  group.add(
+    flesh(
+      ctx,
+      curl({ height: 1.06, rootRadius: 0.26, tipRadius: 0.085, sweep: 0.42, steps: 8 }),
+      accent,
+      // Tight: a horn is hard-surfaced, and it is the one thing on the block
+      // that should not soften as it curls.
+      { blend: 0.035, cell: 0.05, maxCells: 34, uvAxis: "y" },
+    ),
+  );
 
   return group;
 }
@@ -434,52 +534,77 @@ function furPlateTorso(ctx: BlockContext): THREE.Group {
 }
 
 /**
- * Armor torso: a rounded plated chest with shoulder pads, a spine ridge and a
- * lit core.
+ * Armor torso: a plated chest with shoulder shelves, a spine ridge and a lit
+ * core.
  *
  * The core used to be a literal `BoxGeometry` crate, which at realistic
  * proportions was a small hard-surface chest and at chibi ones is most of the
  * character — a cube with a head on it, with the curved plates the shell
- * dresses it in hovering off the flat faces instead of sitting on them. It is
- * a barrel now: the chest curve is what the plates are cut to follow, and the
- * hard-surface read comes from the panelling rather than from the silhouette.
+ * dresses it in hovering off the flat faces instead of sitting on them. It
+ * became a barrel, and now it is sculpted, which is the difference between a
+ * barrel and a body.
+ *
+ * Two surfaces, where there were eight primitives. The body is one sculpt:
+ * chest, back and a shoulder shelf either side, so the pads have something
+ * that already slopes to sit on rather than a sphere they have to cut into —
+ * the intersection ring around each pad was the loudest seam on the block.
+ * The armour is the second: the breastplate and the spine humps are a single
+ * accent sculpt, so the ridge runs *into* the shoulders as one piece of
+ * plating instead of three balls in a row down the spine.
+ *
+ * The accents stay a separate surface from the body on purpose — see
+ * {@link flesh}: plating is trim and trim is supposed to have an edge. What
+ * changed is that the trim no longer has edges *against itself*.
  */
 function armorTorso(ctx: BlockContext): THREE.Group {
   const group = new THREE.Group();
   const { body, accent, glow } = ctx.materials;
 
-  const chest: [number, number, number] = [0.94, 0.86, 1.04];
-  group.add(piece(ctx, new THREE.SphereGeometry(0.5, 16, 12), body, undefined, undefined, chest));
-  // Breastplate: a patch cut off the same sphere a touch proud of it, so it
-  // hugs the chest instead of floating in front of it.
+  // Chest, back and the shoulder shelves, as one volume. The shelves are
+  // barely proud of the barrel: enough to give the pads a slope and to widen
+  // the silhouette at the top, not enough to read as a second mass.
   group.add(
-    piece(
+    flesh(
       ctx,
-      new THREE.SphereGeometry(0.53, 18, 12, Math.PI * 0.68, Math.PI * 0.64, Math.PI * 0.26, Math.PI * 0.46),
-      accent,
-      undefined,
-      undefined,
-      chest,
+      [
+        lump([0, 0, 0], 0.47, 0.43, 0.52),
+        lump([0, 0.1, 0.16], 0.44, 0.38, 0.4),
+        lump([-0.34, 0.2, 0.1], 0.2, 0.17, 0.22),
+        lump([0.34, 0.2, 0.1], 0.2, 0.17, 0.22),
+      ],
+      body,
+      // Firm. A soft blend swells the shelves back into the barrel and the
+      // shoulders go round, which is the one thing armour should not be.
+      { blend: 0.1, cell: 0.085, maxCells: 22, uvAxis: "z" },
     ),
   );
-  // Spine ridge: three shrinking humps down the back rather than one long bar,
-  // which follows the barrel instead of cutting a chord across it.
+
+  // The plating: breastplate, the ridge down the spine, and a pad capping each
+  // shoulder. One sculpt, so the ridge and the pads are continuous armour.
+  // Sitting a hair proud of the body sculpt is what keeps it reading as a
+  // plate laid on the chest rather than as the chest itself.
+  const plating: Mass[] = [
+    lump([0, 0.04, 0.42], 0.34, 0.3, 0.16),
+    lump([0, 0.3, 0.3], 0.26, 0.16, 0.16),
+  ];
   for (const [index, z] of [-0.36, -0.06, 0.24].entries()) {
-    const r = 0.13 - index * 0.02;
-    group.add(piece(ctx, ball(r), accent, [0, 0.42 - index * 0.03, z], undefined, [0.8, 1.1, 1.5]));
+    plating.push(lump([0, 0.42 - index * 0.03, z], 0.11 - index * 0.015, 0.14 - index * 0.02, 0.2));
   }
-  group.add(piece(ctx, ball(0.12), glow, [0, 0.06, 0.52]));
   for (const side of [-1, 1]) {
-    group.add(
-      piece(
-        ctx,
-        new THREE.SphereGeometry(0.26, 10, 7, 0, Math.PI * 2, 0, Math.PI / 2),
-        accent,
-        [side * 0.42, 0.28, 0.2],
-        [0, 0, side * 0.5],
-      ),
-    );
+    plating.push(lump([side * 0.42, 0.28, 0.16], 0.24, 0.16, 0.26));
   }
+  group.add(
+    flesh(ctx, plating, accent, {
+      // Tighter than the body's: the humps have to stay humps. Blended as
+      // softly as flesh they average into one bar down the back.
+      blend: 0.055,
+      cell: 0.075,
+      maxCells: 24,
+      uvAxis: "z",
+    }),
+  );
+
+  group.add(piece(ctx, ball(0.12), glow, [0, 0.06, 0.52]));
 
   return group;
 }
