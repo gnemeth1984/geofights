@@ -163,11 +163,21 @@ function border(u: number, v: number, edge: number): number {
 
 /* ------------------------------------------------------------------- plates */
 
+/**
+ * How far down a plate reaches, either everywhere or column by column.
+ *
+ * A fixed pair sweeps a rectangle of surface. A function is handed `u` — 0 at
+ * the `theta[0]` edge of the plate, 1 at the other — and returns the phi span
+ * for that column, which is how a plate gets an edge that follows a feature
+ * instead of cutting a straight line across it.
+ */
+export type PhiSpan = [number, number] | ((u: number) => [number, number]);
+
 export type PlateSpec = {
   /** Radii of the body part this plate is worn on. */
   radii: Radii;
   /** Vertical sweep from the +Y pole, in radians. */
-  phi: [number, number];
+  phi: PhiSpan;
   /** Horizontal sweep from +Z (front), in radians. */
   theta: [number, number];
   /** How far the plate stands proud of the body surface. */
@@ -213,11 +223,16 @@ export function buildPlate(spec: PlateSpec): THREE.BufferGeometry {
   // Both surfaces are written in one pass: the outer half of the buffer first,
   // then the inner, so the index below can address them by a fixed stride.
   const half = rows * cols;
+  const fixedPhi = Array.isArray(spec.phi) ? spec.phi : null;
+  const phiAt = fixedPhi ? () => fixedPhi : (spec.phi as (u: number) => [number, number]);
   for (let row = 0; row < rows; row += 1) {
     const v = row / segV;
-    const phi = spec.phi[0] + (spec.phi[1] - spec.phi[0]) * v;
     for (let col = 0; col < cols; col += 1) {
       const u = col / segU;
+      // Read per column, not per row: a shaped plate's top and bottom edges
+      // are curves, and `v` only says how far between them this row sits.
+      const span = phiAt(u);
+      const phi = span[0] + (span[1] - span[0]) * v;
       const theta = spec.theta[0] + (spec.theta[1] - spec.theta[0]) * u;
       surfacePoint(radii, phi, theta, p);
       surfaceNormal(radii, p, n);
@@ -277,12 +292,19 @@ export function buildPlate(spec: PlateSpec): THREE.BufferGeometry {
 
 export type TrimSpec = {
   radii: Radii;
-  from: [number, number];
-  to: [number, number];
+  /** Start and end surface points, unless `path` describes the whole route. */
+  from?: [number, number];
+  to?: [number, number];
   lift?: number;
   radius?: number;
   steps?: number;
   offset?: THREE.Vector3;
+  /**
+   * Route the line through arbitrary surface points instead of straight from
+   * `from` to `to`. Handed `t` in 0..1, returns `[phi, theta]`, so a trim can
+   * trace a shaped plate's edge or cross a pole.
+   */
+  path?: (t: number) => [number, number];
 };
 
 /**
@@ -301,8 +323,11 @@ export function buildTrim(spec: TrimSpec): THREE.BufferGeometry {
   const n = new THREE.Vector3();
   for (let i = 0; i <= steps; i += 1) {
     const t = i / steps;
-    const phi = spec.from[0] + (spec.to[0] - spec.from[0]) * t;
-    const theta = spec.from[1] + (spec.to[1] - spec.from[1]) * t;
+    const from = spec.from ?? [0, 0];
+    const to = spec.to ?? from;
+    const at = spec.path?.(t);
+    const phi = at ? at[0] : from[0] + (to[0] - from[0]) * t;
+    const theta = at ? at[1] : from[1] + (to[1] - from[1]) * t;
     surfacePoint(spec.radii, phi, theta, p);
     surfaceNormal(spec.radii, p, n);
     const point = p.clone().addScaledVector(n, lift);
@@ -444,6 +469,14 @@ export type HeadDressSpec = {
  *
  * The front of the skull is deliberately left bare so eyes, visor or a face
  * block still read; the crown stops well short of it.
+ *
+ * Neither plate's lower edge is level. A crown cut at one latitude draws a
+ * hoop right across the brow, and a cheek plate cut at one latitude ends in a
+ * straight line through the middle of the jaw — both read as a decal rather
+ * than as armour made for this skull. So the crown dips to a point at the brow,
+ * lifts at the temples to let the cheek show under it, and comes lower down the
+ * nape; and the cheek flares down to a jaw guard at the chin end while tapering
+ * to a narrow strap where it tucks under the crown at the ear.
  */
 export function dressHead(spec: HeadDressSpec): Dressing {
   const r = spec.radius;
@@ -453,39 +486,73 @@ export function dressHead(spec: HeadDressSpec): Dressing {
   const plates: THREE.BufferGeometry[] = [];
   const trims: THREE.BufferGeometry[] = [];
 
-  // Crown: over the top, from the brow back and down the nape.
+  // Crown: over the top, from the brow back and down the nape. Its lower edge
+  // is a function of heading rather than a constant, written in theta so the
+  // seam and the brow line below can be placed off the same curve and stay
+  // agreed with it.
+  const crownHem = (theta: number): number => {
+    const facing = Math.cos(theta);
+    return 1.02 + 0.22 * Math.max(facing, 0) + 0.3 * Math.max(-facing, 0);
+  };
   plates.push(
     buildPlate({
       radii,
-      phi: [0.0, 1.15],
+      phi: (u) => [0.0, crownHem(-Math.PI + 2 * Math.PI * u)],
       theta: [-Math.PI, Math.PI],
       lift,
       thickness,
       bevel: 0.3,
-      segments: [20, 7],
+      segments: [24, 7],
     }),
   );
   // Cheeks, either side of the face, leaving the middle clear.
+  //
+  // `theta` has to stay ascending or the patch sweeps backwards and turns
+  // itself inside out, which puts the front of the face at u = 1 on the left
+  // side and u = 0 on the right. `chinward` folds that away so one jaw curve
+  // describes both sides: 1 at the chin end of the plate, 0 at the ear end.
+  const jawTop = (f: number): number => 0.86 + 0.24 * f;
+  const jawHem = (f: number): number => 1.42 + 0.58 * f;
   for (const side of [-1, 1]) {
+    const theta: [number, number] = side < 0 ? [-1.5, -0.62] : [0.62, 1.5];
+    const chinward = (u: number): number => (side < 0 ? u : 1 - u);
     plates.push(
       buildPlate({
         radii,
-        phi: [1.0, 1.9],
-        theta: side < 0 ? [-1.5, -0.62] : [0.62, 1.5],
+        phi: (u) => [jawTop(chinward(u)), jawHem(chinward(u))],
+        theta,
         lift,
         thickness: thickness * 0.8,
+        segments: [10, 6],
+      }),
+    );
+    // Trim along that lower edge. The jaw is the line the eye looks for on a
+    // head, and a lit line on it is what makes the flare read as a jaw rather
+    // than as a plate that happens to be wider at one end.
+    trims.push(
+      buildTrim({
+        radii,
+        path: (t) => [jawHem(chinward(t)), theta[0] + (theta[1] - theta[0]) * t],
+        lift: lift + thickness * 0.8,
+        radius: thickness * 0.24,
+        steps: 12,
       }),
     );
   }
   if (spec.brow !== false) {
     // Brow: dips toward the centre line, which is what reads as a scowl and
-    // gives the face a direction even with no features on it.
+    // gives the face a direction even with no features on it. It rides a fixed
+    // distance below the crown's hem, so it is the crown that decides where the
+    // scowl sits and the two can never disagree — a line tuned independently
+    // ends up buried under the plate at one end of its run.
     for (const side of [-1, 1]) {
       trims.push(
         buildTrim({
           radii,
-          from: [1.18, side * 1.45],
-          to: [0.92, side * 0.12],
+          path: (t) => {
+            const theta = side * (1.45 - 1.33 * t);
+            return [crownHem(theta) + 0.1, theta];
+          },
           lift: lift + thickness,
           radius: thickness * 0.3,
           steps: 10,
@@ -493,15 +560,18 @@ export function dressHead(spec: HeadDressSpec): Dressing {
       );
     }
   }
-  // Crown seam, front to back over the top of the skull.
+  // Crown seam, front to back over the top of the skull. Interpolating a
+  // fixed latitude from theta 0 to theta pi would have run it round the side
+  // instead; going over means crossing the pole, where theta flips and phi
+  // turns back, so the route is written out rather than lerped.
   trims.push(
     buildTrim({
       radii,
-      from: [1.12, 0],
-      to: [1.12, Math.PI],
+      path: (t) =>
+        t < 0.5 ? [crownHem(0) * (1 - 2 * t), 0] : [crownHem(Math.PI) * (2 * t - 1), Math.PI],
       lift: lift + thickness,
       radius: thickness * 0.26,
-      steps: 16,
+      steps: 18,
     }),
   );
 
