@@ -186,12 +186,34 @@ Sustained output across the whole move list sits in a 1.0-2.2 power/second
 band at both ends of the speed stat, and speed measurably buys throughput, so
 the stat line and the boosters behind it still do their job.
 
-### Still to do
+## Status — all five steps done
 
-Step 4, the client, is untouched: the pad still sends only a target, there is
-no guard prompt, and `REACH_M` in the stage is still floored. Step 5's four
-existing suites have not been re-run against the new contract yet and are
-expected to need updating.
+Step 4 landed with the stick/pad join (`f9438d9`), and this section used to
+still say it was untouched. What is actually in the client:
+
+- **The pad sends the move.** `doAttack` passes the pressed `moveType`, after
+  the stick has had its say — the button names the strike, the stick names the
+  footwork it is thrown off, and `moveForFootwork` resolves the two into one
+  blow. The swing animates on the tap and the reply only corrects it if the
+  engine threw something else, so the round trip the server holds open for the
+  windup is not paid twice.
+- **The guard prompt reads the telegraph.** `avatar_windup` sets `incoming`;
+  the pad names the blow and rings the defences that answer its kind, and the
+  badge comes down on a timer set to `strikeAt + GUARD_WINDOW.lateToMs`. The
+  far body starts its swing on the telegraph, which is the thing being read.
+  `battle.guard` sends *what*, never when.
+- **Reach is un-floored.** The stage's hand-copied 0.38 m-floored table is
+  gone; it asks `ATTACK_PROFILE[move].reachM` and `REACH_SLACK_M` — the same
+  table the hit check asks — so the eye and the server call the same whiff.
+- **Both sides report the space.** `spacing()` sends `gapM` and
+  `spaceBehindM` on every swing *and* every guard, and the engine takes the
+  larger of the two gaps.
+
+Step 5's suites are green as of this pass: `check:combat` 150/0, sculpt-check
+24/0, `scripts/smoke.sh` and `scripts/safety-smoke.sh` both fully passing.
+Fixing them turned up one real regression, unrelated to combat — `upgrade()`
+refits were leaking into the shop listing and escalating its prices 1.8x a
+time (`c3401fe`).
 
 ## Untouched
 
