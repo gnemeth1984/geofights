@@ -35,6 +35,7 @@ import {
 import { computeDamage, type DamageResult } from "../lib/damage";
 import { combatFormFor } from "../services/avatars";
 import { adjustCurrency, grantXp, logTransaction, recordResult } from "../services/players";
+import { STAKED_REASONS, type ForfeitResult, settleForfeit } from "../services/stakes";
 import { assess, requireSafe, unsafeError } from "../services/safety";
 import { BOOSTER_XP_REWARD, awardBoosterXp, rollBattleDrop } from "../services/boosters";
 import { effectiveStats, type AbilityDef } from "./stats";
@@ -183,9 +184,27 @@ export async function matchSnapshot(matchId: string) {
     .innerJoin(schema.player, eq(schema.player.id, schema.matchPlayer.playerId))
     .innerJoin(schema.avatar, eq(schema.avatar.id, schema.matchPlayer.avatarId))
     .where(eq(schema.matchPlayer.matchId, matchId));
+  // What the fight cost — empty until a staked match settles.
+  const forfeits =
+    match.status === "finished"
+      ? await db
+          .select({
+            kind: schema.boosterForfeit.kind,
+            winnerPlayerId: schema.boosterForfeit.winnerPlayerId,
+            loserPlayerId: schema.boosterForfeit.loserPlayerId,
+            lostLevel: schema.boosterForfeit.lostLevel,
+            grantedInstanceId: schema.boosterForfeit.grantedInstanceId,
+            boosterName: schema.booster.name,
+            rarity: schema.booster.rarity,
+          })
+          .from(schema.boosterForfeit)
+          .innerJoin(schema.booster, eq(schema.booster.id, schema.boosterForfeit.boosterId))
+          .where(eq(schema.boosterForfeit.matchId, matchId))
+      : [];
   return {
     match,
     zone: zone ?? null,
+    forfeits,
     lobby: lobby
       .filter((entry) => entry.row.leftAt == null)
       .map((entry) => ({
@@ -1212,6 +1231,22 @@ export async function finishMatch(input: { matchId: string; reason: string }) {
     });
   }
 
+  // Stakes: every knocked-out loser forfeits a booster from the avatar that
+  // fought. Only a fight that actually ended counts — see services/stakes.ts.
+  const forfeits: ForfeitResult[] = [];
+  if (winner?.state.alive && ranked.length > 1 && STAKED_REASONS.has(input.reason)) {
+    for (const loser of ranked.slice(1).filter((row) => !row.state.alive)) {
+      forfeits.push(
+        await settleForfeit({
+          matchId: input.matchId,
+          winnerPlayerId: winner.state.playerId,
+          loserPlayerId: loser.state.playerId,
+          loserAvatarId: loser.state.avatarId,
+        }),
+      );
+    }
+  }
+
   const [zone] = await db.select().from(schema.zone).where(eq(schema.zone.id, match.zoneId));
   const summary = await generateMatchSummary({
     zoneName: zone?.name ?? "the zone",
@@ -1238,11 +1273,11 @@ export async function finishMatch(input: { matchId: string; reason: string }) {
   await emit(
     input.matchId,
     "match_finished",
-    { reason: input.reason, winnerPlayerId: winner?.state.playerId ?? null, rewards },
+    { reason: input.reason, winnerPlayerId: winner?.state.playerId ?? null, rewards, forfeits },
     { message: summary },
   );
 
-  return { ...(await matchSnapshot(input.matchId)), rewards, summary };
+  return { ...(await matchSnapshot(input.matchId)), rewards, forfeits, summary };
 }
 
 /** Build the per-avatar battle state rows when a match starts. */

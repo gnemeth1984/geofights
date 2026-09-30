@@ -1,4 +1,4 @@
-import { LogOut, Skull, Swords, Trophy } from "lucide-react";
+import { Gift, LogOut, PackageMinus, PackagePlus, Skull, Swords, Trophy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,15 +17,27 @@ import type { HudPlayer } from "@/components/play/battle-hud";
 
 export type ResultPlayer = HudPlayer & { damageDealt: number; damageTaken: number };
 
+/** What the fight cost — one row per loser, from services/stakes.ts. */
+export type ResultForfeit = {
+  kind: "spoils" | "bounty";
+  winnerPlayerId: string;
+  loserPlayerId: string;
+  lostLevel: number | null;
+  boosterName: string;
+  rarity: string;
+};
+
 export function MatchResult({
   players,
   winnerPlayerId,
   myPlayerId,
   summary,
+  forfeits = [],
   onLeave,
   pending,
 }: {
   players: ResultPlayer[];
+  forfeits?: ResultForfeit[];
   winnerPlayerId: string | null;
   myPlayerId: string | null;
   summary: string | null;
@@ -64,6 +76,8 @@ export function MatchResult({
         )}
       </div>
 
+      <Stakes forfeits={forfeits} myPlayerId={myPlayerId} />
+
       <div className="space-y-1">
         {ranked.map((player) => (
           <div
@@ -97,6 +111,48 @@ export function MatchResult({
         <LogOut className="size-4" />
         Back to base
       </Button>
+    </div>
+  );
+}
+
+/**
+ * The stakes line. Losing costs a booster off the avatar that fought, and the
+ * winner walks away with a fresh copy — so both halves of the result have to
+ * say what moved, and the winner needs to know it can equip or sell it.
+ */
+function Stakes({ forfeits, myPlayerId }: { forfeits: ResultForfeit[]; myPlayerId: string | null }) {
+  const mine = forfeits.filter((f) => f.winnerPlayerId === myPlayerId || f.loserPlayerId === myPlayerId);
+  if (mine.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {mine.map((f) => {
+        const iWon = f.winnerPlayerId === myPlayerId;
+        const Icon = iWon ? (f.kind === "bounty" ? Gift : PackagePlus) : PackageMinus;
+        const line = iWon
+          ? f.kind === "spoils"
+            ? `You took ${f.boosterName} off them.`
+            : `Bounty: ${f.boosterName}. They had nothing equipped to lose.`
+          : `You lost ${f.boosterName}${f.lostLevel ? ` (lv ${f.lostLevel})` : ""}. Win it back.`;
+        return (
+          <div
+            key={`${f.winnerPlayerId}:${f.loserPlayerId}`}
+            className={cn(
+              "flex items-start gap-2 rounded-md border px-3 py-2 text-xs",
+              iWon ? "border-primary/50 bg-primary/10" : "border-destructive/50 bg-destructive/10",
+            )}
+          >
+            <Icon className={cn("mt-0.5 size-4 shrink-0", iWon ? "text-primary" : "text-destructive")} />
+            <div className="min-w-0">
+              <div className="font-semibold">{line}</div>
+              {iWon && (
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {f.rarity} · it's in your loadout list: equip it, or sell it in the Market.
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

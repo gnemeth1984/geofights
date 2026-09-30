@@ -134,7 +134,7 @@ export const boosterInstance = sqliteTable(
     ownerId: text("owner_id").notNull(),
     equippedAvatarId: text("equipped_avatar_id"),
     acquiredVia: text("acquired_via", {
-      enum: ["purchase", "pack", "nature", "battle", "marketplace", "starter", "upgrade"],
+      enum: ["purchase", "pack", "nature", "battle", "marketplace", "starter", "upgrade", "spoils"],
     }).notNull(),
     /**
      * Per-instance progression, 1..BOOSTER_MAX_LEVEL. Earned by battling and
@@ -265,10 +265,19 @@ export const spawnPoint = sqliteTable(
     collectRadiusM: integer("collect_radius_m").notNull().default(25),
     collectedByPlayerId: text("collected_by_player_id"),
     collectedAt: timestamp("collected_at"),
+    /**
+     * A personal drop: only this player sees it or can collect it. Null for
+     * the shared daily scatter that anyone in the zone can race for.
+     */
+    reservedForPlayerId: text("reserved_for_player_id"),
     expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").notNull().$defaultFn(now),
   },
-  (t) => [index("spawn_zone_idx").on(t.zoneId), index("spawn_expires_idx").on(t.expiresAt)],
+  (t) => [
+    index("spawn_zone_idx").on(t.zoneId),
+    index("spawn_expires_idx").on(t.expiresAt),
+    index("spawn_reserved_idx").on(t.reservedForPlayerId),
+  ],
 );
 
 /* ------------------------------------------------------ Matches & battles */
@@ -441,7 +450,15 @@ export const transaction = sqliteTable(
   {
     id: text("id").primaryKey(),
     type: text("type", {
-      enum: ["market_sale", "shop_purchase", "battle_reward", "nature_pickup", "upgrade", "admin_grant"],
+      enum: [
+        "market_sale",
+        "shop_purchase",
+        "battle_reward",
+        "nature_pickup",
+        "upgrade",
+        "admin_grant",
+        "battle_forfeit",
+      ],
     }).notNull(),
     listingId: text("listing_id"),
     fromPlayerId: text("from_player_id"),
@@ -457,6 +474,34 @@ export const transaction = sqliteTable(
   (t) => [
     index("transaction_from_idx").on(t.fromPlayerId),
     index("transaction_to_idx").on(t.toPlayerId),
+  ],
+);
+
+/**
+ * What a fight cost. The loser gives up one booster that was equipped on the
+ * avatar that fought — it is destroyed — and the winner is minted a fresh copy.
+ * When the loser had nothing equipped the winner gets a random booster instead
+ * (`kind: "bounty"`). Also the anti-farming ledger: one row per pair per day.
+ */
+export const boosterForfeit = sqliteTable(
+  "booster_forfeit",
+  {
+    id: text("id").primaryKey(),
+    matchId: text("match_id").notNull(),
+    winnerPlayerId: text("winner_player_id").notNull(),
+    loserPlayerId: text("loser_player_id").notNull(),
+    kind: text("kind", { enum: ["spoils", "bounty"] }).notNull(),
+    /** The definition that changed hands (spoils) or was rolled (bounty). */
+    boosterId: text("booster_id").notNull(),
+    /** The loser's destroyed instance — null for a bounty. */
+    lostInstanceId: text("lost_instance_id"),
+    lostLevel: integer("lost_level"),
+    grantedInstanceId: text("granted_instance_id").notNull(),
+    createdAt: timestamp("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("forfeit_pair_idx").on(t.winnerPlayerId, t.loserPlayerId),
+    index("forfeit_match_idx").on(t.matchId),
   ],
 );
 

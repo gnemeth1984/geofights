@@ -22,7 +22,8 @@ import {
   type PackOffer,
   type PackReveal,
 } from "@/components/play/booster-panel";
-import { MatchResult, type ResultPlayer } from "@/components/play/match-result";
+import { MatchResult, type ResultForfeit, type ResultPlayer } from "@/components/play/match-result";
+import { MarketPanel } from "@/components/play/market-panel";
 import { BattlePad, type IncomingBlow } from "@/components/play/battle-pad";
 import { RevealHandle } from "@/components/play/reveal-handle";
 import { TrainingMode, type TrainingHit } from "@/components/play/training-mode";
@@ -1852,6 +1853,7 @@ function Play() {
                   winnerPlayerId={match.data?.match.winnerPlayerId ?? null}
                   myPlayerId={myPlayerId ?? null}
                   summary={match.data?.match.summary ?? null}
+                  forfeits={(match.data?.forfeits ?? []) as ResultForfeit[]}
                   onLeave={doLeave}
                   pending={leaveMatch.isPending}
                 />
@@ -1930,6 +1932,7 @@ function Play() {
                     }
                     error={boosterNote}
                   />
+                  <MarketPanel myPlayerId={myPlayerId ?? null} currency={profile.data?.currency ?? null} />
                   <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border pt-2 font-mono text-[11px] text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
                       <MapPin className="size-3" />

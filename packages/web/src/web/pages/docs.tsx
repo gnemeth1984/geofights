@@ -527,7 +527,8 @@ const EVENTS = [
   { name: "match_started", payload: "startedAt, participants", durable: true },
   {
     name: "match_finished",
-    payload: "winnerPlayerId, rewards, xp, AI-written summary",
+    payload:
+      "reason, winnerPlayerId, rewards, forfeits (spoils | bounty | skipped — the booster each loser gave up), AI-written summary",
     durable: true,
   },
 ] as const;

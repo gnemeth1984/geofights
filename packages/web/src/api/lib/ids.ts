@@ -23,4 +23,5 @@ export const ids = {
   leaderboard: () => newId("lbd"),
   dangerZone: () => newId("dgz"),
   safetyEvent: () => newId("sfe"),
+  forfeit: () => newId("frf"),
 };
