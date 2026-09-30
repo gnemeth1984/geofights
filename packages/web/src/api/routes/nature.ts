@@ -9,6 +9,7 @@ import {
   nearbySpawns,
   nearestZone,
 } from "../services/nature";
+import { PERSONAL_DROPS_PER_DAY, PERSONAL_DROP_COOLDOWN_MS, dropAllowance } from "../services/drops";
 
 /**
  * Nature Exploration (GPS). Clients poll `nearby` with the device position and
@@ -44,6 +45,13 @@ export const nature = {
         playerId: context.player.id,
       }),
     ),
+
+  /** Free personal drops: how many are left today and when the next one can land. */
+  drops: playerProc.handler(async ({ context }) => ({
+    perDay: PERSONAL_DROPS_PER_DAY,
+    cooldownMs: PERSONAL_DROP_COOLDOWN_MS,
+    ...(await dropAllowance(context.player.id)),
+  })),
 
   /** Pick up a booster. Requires physical proximity to the spawn point. */
   collect: playerProc

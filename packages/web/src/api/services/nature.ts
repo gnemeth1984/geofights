@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { db } from "../database";
 import * as schema from "../database/schema";
@@ -10,6 +10,7 @@ import { randomInt, rollRarity } from "../lib/rng";
 import { BOOSTER_XP_REWARD, awardBoosterXp, mintBoosterInstance, pickBoosterDefinition } from "./boosters";
 import { logTransaction, touchLocation } from "./players";
 import { requireSafe, unsafeError } from "./safety";
+import { maybeDropForPlayer } from "./drops";
 
 /**
  * Nature Exploration — GPS-anchored booster spawns.
@@ -159,6 +160,8 @@ export async function nearbySpawns(input: {
 }) {
   const radius = input.radiusM ?? DEFAULT_SEARCH_RADIUS_M;
   const box = boundingBox({ lat: input.lat, lng: input.lng }, radius);
+  // Near a park with drops left today? Put one down before reading the map.
+  if (input.playerId) await maybeDropForPlayer(input.playerId, input.lat, input.lng);
 
   const rows = await db
     .select({
@@ -173,6 +176,13 @@ export async function nearbySpawns(input: {
       and(
         isNull(schema.spawnPoint.collectedByPlayerId),
         gt(schema.spawnPoint.expiresAt, new Date()),
+        // Personal drops are invisible to everyone but the player they were dropped for.
+        input.playerId
+          ? or(
+              isNull(schema.spawnPoint.reservedForPlayerId),
+              eq(schema.spawnPoint.reservedForPlayerId, input.playerId),
+            )
+          : isNull(schema.spawnPoint.reservedForPlayerId),
         sql`${schema.spawnPoint.lat} between ${box.minLat} and ${box.maxLat}`,
         sql`${schema.spawnPoint.lng} between ${box.minLng} and ${box.maxLng}`,
       ),
@@ -196,6 +206,7 @@ export async function nearbySpawns(input: {
         description: row.spawn.description,
         collectRadiusM: row.spawn.collectRadiusM,
         expiresAt: row.spawn.expiresAt,
+        personal: row.spawn.reservedForPlayerId != null,
         distanceM: distance,
         inRange: distance <= row.spawn.collectRadiusM,
         booster: {
@@ -229,6 +240,9 @@ export async function collectSpawn(input: {
     .innerJoin(schema.booster, eq(schema.booster.id, schema.spawnPoint.boosterId))
     .where(eq(schema.spawnPoint.id, input.spawnPointId));
   if (!row) throw new ORPCError("NOT_FOUND", { message: "Spawn point not found" });
+  if (row.spawn.reservedForPlayerId && row.spawn.reservedForPlayerId !== input.playerId) {
+    throw new ORPCError("NOT_FOUND", { message: "Spawn point not found" });
+  }
   if (row.spawn.collectedByPlayerId) {
     throw new ORPCError("BAD_REQUEST", { message: "Already collected" });
   }
@@ -303,20 +317,29 @@ export async function collectSpawn(input: {
 /** Create one spawn point inside a zone. Used by the cron and by admins. */
 export async function spawnInZone(
   zone: typeof schema.zone.$inferSelect,
-  opts: { rarity?: Rarity; ttlHours?: number } = {},
+  opts: {
+    rarity?: Rarity;
+    ttlHours?: number;
+    /** Where to put it. Defaults to anywhere inside the zone. */
+    point?: { lat: number; lng: number };
+    /** Makes it a personal drop only this player can see or collect. */
+    reservedForPlayerId?: string;
+    /** Skip the model call — used on the request path, where latency matters. */
+    description?: string;
+  } = {},
 ) {
   const rarity = opts.rarity ?? rollRarity();
   const definition = await pickBoosterDefinition(rarity, "nature");
-  const point = randomPointInRadius(
-    { lat: zone.centerLat, lng: zone.centerLng },
-    zone.radiusM,
-  );
-  const description = await generateSpawnDescription({
-    boosterName: definition.name,
-    rarity,
-    zoneName: zone.name,
-    terrain: zone.terrain,
-  });
+  const point =
+    opts.point ?? randomPointInRadius({ lat: zone.centerLat, lng: zone.centerLng }, zone.radiusM);
+  const description =
+    opts.description ??
+    (await generateSpawnDescription({
+      boosterName: definition.name,
+      rarity,
+      zoneName: zone.name,
+      terrain: zone.terrain,
+    }));
 
   const [row] = await db
     .insert(schema.spawnPoint)
@@ -330,6 +353,7 @@ export async function spawnInZone(
       description,
       // Rarer finds demand tighter positioning.
       collectRadiusM: rarity === "legendary" || rarity === "epic" ? 15 : randomInt(20, 30),
+      reservedForPlayerId: opts.reservedForPlayerId ?? null,
       expiresAt: new Date(Date.now() + (opts.ttlHours ?? SPAWN_TTL_HOURS) * 3_600_000),
     })
     .returning();

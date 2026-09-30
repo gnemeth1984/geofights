@@ -46,6 +46,7 @@ export function CollectSheet({
             <span className="truncate text-sm font-medium">{spawn.booster.name}</span>
             <RarityBadge rarity={spawn.booster.rarity} />
             {spawn.booster.tier > 1 && <Badge tone="info">t{spawn.booster.tier}</Badge>}
+            {spawn.personal && <Badge tone="live">free · yours</Badge>}
           </div>
           <div className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
             {spawn.booster.description}
