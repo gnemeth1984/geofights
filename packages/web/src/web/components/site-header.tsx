@@ -2,13 +2,13 @@ import { BookOpen, Gamepad2 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
-/** Shared top bar for the public pages (the console has its own, with session). */
+/** Top bar for the developer pages (/dev, /docs, /character-lab). The public landing has its own. */
 export function SiteHeader({ current }: { current: "home" | "docs" | "play" }) {
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-background/85 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
         <Link
-          href="/"
+          href="/dev"
           // Tracking tightens on small screens: at 0.18em the wordmark ran into
           // the nav on a 390px viewport.
           className="flex shrink-0 items-center gap-2 font-display text-xs font-semibold uppercase tracking-[0.08em] sm:text-sm sm:tracking-[0.18em]"

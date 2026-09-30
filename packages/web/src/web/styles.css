@@ -230,3 +230,86 @@
     animation: none;
   }
 }
+
+/* ------------------------------------------------------------ Landing page */
+
+@keyframes lf-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes lf-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+@keyframes lf-march {
+  to {
+    stroke-dashoffset: -36;
+  }
+}
+
+@keyframes lf-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lf-float {
+  animation: lf-float 4.2s ease-in-out infinite;
+}
+/* The orb keeps its mirror while it bobs. */
+.lf-float-late {
+  animation-delay: -2.1s;
+}
+.lf-float-late.-scale-x-100 {
+  animation-name: lf-float-mirrored;
+}
+@keyframes lf-float-mirrored {
+  0%,
+  100% {
+    transform: scaleX(-1) translateY(0);
+  }
+  50% {
+    transform: scaleX(-1) translateY(-8px);
+  }
+}
+.lf-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lf-ping 2.4s ease-out infinite;
+}
+.lf-ping-slow {
+  animation-duration: 3.2s;
+}
+.lf-route {
+  animation: lf-march 1.6s linear infinite;
+}
+.lf-rise {
+  animation: lf-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lf-float,
+  .lf-ping,
+  .lf-route,
+  .lf-rise {
+    animation: none;
+  }
+}

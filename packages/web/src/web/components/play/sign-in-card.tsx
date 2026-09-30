@@ -10,8 +10,8 @@ import { useSignIn, useSignUp } from "@/queries/session";
  * character and walk to a booster marker unauthenticated — but boosters, avatars
  * and matches are owned by an account, so combat needs one.
  */
-export function SignInCard() {
-  const [mode, setMode] = React.useState<"in" | "up">("in");
+export function SignInCard({ initialMode = "in" }: { initialMode?: "in" | "up" } = {}) {
+  const [mode, setMode] = React.useState<"in" | "up">(initialMode);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");

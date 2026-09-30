@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Route, Switch } from "wouter";
-import Index from "./pages/index";
+import Landing from "./pages/index";
+import DevOverview from "./pages/dev";
 import Admin from "./pages/admin";
 import Docs from "./pages/docs";
 
@@ -11,13 +12,18 @@ const Play = lazy(() => import("./pages/play"));
 const CharacterLab = lazy(() => import("./pages/character-lab"));
 import { Provider } from "./components/provider";
 import { InstallPrompt } from "./components/install-prompt";
+import { RouteMeta } from "./components/route-meta";
 import { AgentFeedback, RunableBadge } from "@runablehq/website-runtime";
 
 function App() {
   return (
     <Provider>
+      <RouteMeta />
       <Switch>
-        <Route path="/" component={Index} />
+        {/* Public, indexable: the game's front door. Signed-in players bounce to /play. */}
+        <Route path="/" component={Landing} />
+        {/* Developer overview — unlinked from the public site and noindex. */}
+        <Route path="/dev" component={DevOverview} />
         <Route path="/admin" component={Admin} />
         <Route path="/docs" component={Docs} />
         <Route path="/play">

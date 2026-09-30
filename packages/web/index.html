@@ -8,11 +8,10 @@
 			name="viewport"
 			content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
 		/>
-		<title>GeoFights — Multiplayer AR Battles</title>
-		<meta
-			name="description"
-			content="Claim real-world zones, collect AI-generated fighters and boosters, and duel other players in realtime AR battles on the map around you."
-		/>
+		<title>GeoFights — Free AR Battle Game in the Parks Near You</title>
+		<meta name="description" content="GeoFights is a free outdoor AR battle game. Walk to a park, pitch or playground near you, collect free upgrades that drop just for you, and fight other players in AR. Win and take one of their upgrades." />
+		<meta name="robots" content="index, follow" />
+		<link rel="canonical" href="https://geofights.com/" />
 
 		<!-- PWA -->
 		<link rel="manifest" href="/manifest.webmanifest" />
@@ -32,20 +31,47 @@
 		<!-- Link previews -->
 		<meta property="og:type" content="website" />
 		<meta property="og:site_name" content="GeoFights" />
-		<meta property="og:title" content="GeoFights — Multiplayer AR Battles" />
-		<meta
-			property="og:description"
-			content="Claim real-world zones, collect AI-generated fighters and boosters, and duel other players in realtime AR battles on the map around you."
-		/>
-		<meta property="og:image" content="/og-image.png" />
+		<meta property="og:url" content="https://geofights.com/" />
+		<meta property="og:title" content="GeoFights — Free AR Battle Game in the Parks Near You" />
+		<meta property="og:description" content="GeoFights is a free outdoor AR battle game. Walk to a park, pitch or playground near you, collect free upgrades that drop just for you, and fight other players in AR. Win and take one of their upgrades." />
+		<meta property="og:image" content="https://geofights.com/og-image.png" />
+		<meta property="og:image:alt" content="GeoFights — multiplayer AR battles on your real-world map" />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
 		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:title" content="GeoFights — Multiplayer AR Battles" />
-		<meta name="twitter:image" content="/og-image.png" />
+		<meta name="twitter:title" content="GeoFights — Free AR Battle Game in the Parks Near You" />
+		<meta name="twitter:description" content="GeoFights is a free outdoor AR battle game. Walk to a park, pitch or playground near you, collect free upgrades that drop just for you, and fight other players in AR. Win and take one of their upgrades." />
+		<meta name="twitter:image" content="https://geofights.com/og-image.png" />
+
+		<!-- Structured data for search. The FAQ mirrors components/landing/faq.tsx. -->
+		<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "GeoFights", "url": "https://geofights.com/"}</script>
+		<script type="application/ld+json">{"@context": "https://schema.org", "@type": "VideoGame", "name": "GeoFights", "url": "https://geofights.com/", "description": "GeoFights is a free outdoor AR battle game. Walk to a park, pitch or playground near you, collect free upgrades that drop just for you, and fight other players in AR. Win and take one of their upgrades.", "image": "https://geofights.com/og-image.png", "genre": ["Augmented reality", "Location-based game", "Fighting"], "gamePlatform": ["Web browser", "Android", "iOS"], "applicationCategory": "Game", "operatingSystem": "Any", "playMode": "MultiPlayer", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}</script>
+		<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is GeoFights free?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. It's free to play and there is nothing to buy with real money. Coins, upgrades and fighters are all earned by playing."}}, {"@type": "Question", "name": "What do I need to play?", "acceptedAnswer": {"@type": "Answer", "text": "A phone with GPS and a camera, and a web browser. There's no app store download — you can add GeoFights to your home screen and it opens full screen like an app."}}, {"@type": "Question", "name": "Where can I play?", "acceptedAnswer": {"@type": "Answer", "text": "In parks, sports pitches and playgrounds that have been reviewed and approved as play areas. The game shows you the nearest one."}}, {"@type": "Question", "name": "How do free upgrades work?", "acceptedAnswer": {"@type": "Answer", "text": "When you're near an approved park, pitch or playground, the game drops an upgrade inside it just for you — a few times a day, with a wait between drops. Only you can see it, and you have to walk to it to pick it up."}}, {"@type": "Question", "name": "What happens if I lose a fight?", "acceptedAnswer": {"@type": "Answer", "text": "You lose one of the upgrades your fighter had equipped, and the winner gets a fresh copy of it to use or sell in the Market. If you had nothing equipped, you lose nothing and the winner gets a random upgrade instead."}}, {"@type": "Question", "name": "Is it safe for children?", "acceptedAnswer": {"@type": "Answer", "text": "Play only happens in reviewed areas, never on roads, railways or water, and the game pauses if you move faster than walking pace. Players under 16 need a parent or guardian to switch location on, and other players never see your exact position."}}]}</script>
+		<!-- The fallback below is the landing's copy for crawlers that do not run JS.
+		     Anything that does run JS hides it before first paint and gets the same
+		     content from React, so no route ever flashes it. -->
+		<script>document.documentElement.classList.add("js")</script>
+		<style>.js #seo-fallback{display:none}#seo-fallback{max-width:44rem;margin:0 auto;padding:6rem 1.25rem;font-family:system-ui,sans-serif;color:#e8ecf2;background:#0e1722;line-height:1.6}#seo-fallback h1{font-size:2.2rem;line-height:1.1}#seo-fallback a{color:#b7e34a}</style>
 	</head>
 	<body>
-		<div id="root"></div>
+		<div id="root">
+			<main id="seo-fallback">
+				<h1>GeoFights — your local park is the arena</h1>
+				<p>GeoFights is a free AR battle game played outdoors. Walk to a park, sports pitch or playground near you, pick up free upgrades that drop there just for you, and fight other players on the grass you are standing on. Win, and you take one of their upgrades.</p>
+				<h2>How GeoFights works</h2>
+				<ol><li><strong>Describe your fighter.</strong> Type what you want and the game builds it, with its own moves, stats and personality.</li><li><strong>Walk out and collect.</strong> Near an approved park, pitch or playground, free upgrades drop for you a few times a day. Only you can see yours.</li><li><strong>Fight for keeps.</strong> Battle nearby players in AR. The loser gives up one equipped upgrade; the winner can equip it or sell it in the Market.</li></ol>
+				<h2>Built to be played outside, safely</h2>
+				<p>Only reviewed play areas. Never on roads, railways, water or private land. The game pauses above walking pace. Players under 16 need a parent or guardian to switch location on, and other players never see your exact position.</p>
+				<h2>Questions</h2>
+				<h3>Is GeoFights free?</h3><p>Yes. It's free to play and there is nothing to buy with real money. Coins, upgrades and fighters are all earned by playing.</p>
+				<h3>What do I need to play?</h3><p>A phone with GPS and a camera, and a web browser. There's no app store download — you can add GeoFights to your home screen and it opens full screen like an app.</p>
+				<h3>Where can I play?</h3><p>In parks, sports pitches and playgrounds that have been reviewed and approved as play areas. The game shows you the nearest one.</p>
+				<h3>How do free upgrades work?</h3><p>When you're near an approved park, pitch or playground, the game drops an upgrade inside it just for you — a few times a day, with a wait between drops. Only you can see it, and you have to walk to it to pick it up.</p>
+				<h3>What happens if I lose a fight?</h3><p>You lose one of the upgrades your fighter had equipped, and the winner gets a fresh copy of it to use or sell in the Market. If you had nothing equipped, you lose nothing and the winner gets a random upgrade instead.</p>
+				<h3>Is it safe for children?</h3><p>Play only happens in reviewed areas, never on roads, railways or water, and the game pauses if you move faster than walking pace. Players under 16 need a parent or guardian to switch location on, and other players never see your exact position.</p>
+				<p><a href="/play">Play GeoFights</a></p>
+			</main>
+		</div>
 		<script type="module" src="/src/web/main.tsx"></script>
 	</body>
 </html>

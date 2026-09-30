@@ -2,15 +2,22 @@
   "id": "/",
   "name": "GeoFights — Multiplayer AR Battles",
   "short_name": "GeoFights",
-  "description": "Claim real-world zones, collect AI-generated fighters and boosters, and duel other players in realtime AR battles on the map around you.",
+  "description": "Free outdoor AR battle game. Walk to a park near you, collect free upgrades and fight other players in AR.",
   "start_url": "/play?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "display_override": [
+    "fullscreen",
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "any",
   "background_color": "#0e1722",
   "theme_color": "#0e1722",
-  "categories": ["games", "entertainment"],
+  "categories": [
+    "games",
+    "entertainment"
+  ],
   "lang": "en",
   "dir": "ltr",
   "prefer_related_applications": false,
@@ -54,12 +61,12 @@
       "name": "Enter the arena",
       "short_name": "Play",
       "url": "/play?source=pwa-shortcut",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Operator console",
-      "short_name": "Console",
-      "url": "/admin?source=pwa-shortcut"
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

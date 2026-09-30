@@ -37,8 +37,14 @@ Loaded from Google Fonts in `styles.css`; exposed as `font-display`, `font-sans`
 
 ## Pages
 
-- **Overview** (`src/web/pages/index.tsx`) — what this backend is, the module map, live health
-  and stat readout, links into the console and the integration docs.
+- **Landing** (`src/web/pages/index.tsx`, `/`) — the public, indexable front door. Account form
+  in the first screen, signed-in players redirect to `/play`. Hero art is real creature renders
+  from the character builder over an SVG street map (`components/landing/`). No developer links.
+  SEO: static fallback copy + JSON-LD (WebSite, VideoGame, FAQPage) in `index.html`,
+  `public/robots.txt`, `public/sitemap.xml`, per-route title/canonical/robots in
+  `components/route-meta.tsx` — only `/` is indexable.
+- **Developer overview** (`src/web/pages/dev.tsx`, `/dev`) — what this backend is, the module
+  map, live health and stat readout. Unlinked from the public site, noindex.
 - **Console** (`src/web/pages/admin.tsx`) — email/password gate, then the admin panel: Overview,
   Players, Zones & Spawns, Matches, Marketplace, Economy, Jobs. Each tab is a component in
   `src/web/components/admin/`.

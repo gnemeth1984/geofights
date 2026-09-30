@@ -1,251 +1,221 @@
-import {
-  ArrowRight,
-  BookOpen,
-  Bot,
-  Coins,
-  Database,
-  MapPin,
-  Radio,
-  Shield,
-  Sparkles,
-  Store,
-  Swords,
-  Zap,
-} from "lucide-react";
-import { Link } from "wouter";
-import { Badge } from "@/components/ui/badge";
+import { useEffect } from "react";
+import { ArrowRight, Car, Eye, Gift, MapPinned, ShieldCheck, Sparkles, Swords, Trees, Users } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { CodeBlock, Mono } from "@/components/ui/code";
-import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
-import { SiteHeader } from "@/components/site-header";
-import { usePing } from "@/queries/ping";
+import { SignInCard } from "@/components/play/sign-in-card";
+import { HeroArt } from "@/components/landing/hero-art";
+import { FAQ } from "@/components/landing/faq";
+import { useSession } from "@/queries/session";
 
 /**
- * Landing page for the backend itself: what exists, where it lives, and the
- * two doors out of here — the operator console and the integration docs.
+ * The public front door. It is the game's landing, not a brochure: the account
+ * form sits in the first screen, and anyone already signed in never sees this
+ * page at all — they are sent straight to /play. Everything below the fold is
+ * there for the people (and search engines) who have not heard of it yet.
  */
-function Index() {
-  const ping = usePing();
+function Landing() {
+  const session = useSession();
+  const [, navigate] = useLocation();
+  const signedIn = Boolean(session.data?.user);
+
+  useEffect(() => {
+    if (signedIn) navigate("/play", { replace: true });
+  }, [signedIn, navigate]);
 
   return (
-    <div className="min-h-dvh">
-      <SiteHeader current="home" />
+    <div className="min-h-dvh overflow-x-clip">
+      <header className="absolute inset-x-0 top-0 z-10">
+        <div className="mx-auto flex max-w-6xl items-center px-4 py-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-2 font-display text-sm font-bold uppercase tracking-[0.16em]">
+            <img src="/icons/icon-192.png" alt="" width={28} height={28} className="size-7 rounded-md" />
+            Geo<span className="text-primary">Fights</span>
+          </Link>
+          <a href="#join" className="ml-auto">
+            <Button size="sm" variant="outline">
+              Sign in
+            </Button>
+          </a>
+        </div>
+      </header>
 
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <section className="max-w-3xl">
-          <div className="flex items-center gap-2">
-            <Badge tone={ping.isError ? "bad" : ping.data ? "live" : "neutral"}>
-              {ping.isLoading ? "checking" : ping.isError ? "servers down" : "servers online"}
-            </Badge>
-            <Badge>install to play</Badge>
-          </div>
-          <h1 className="mt-4 font-display text-4xl font-semibold leading-tight sm:text-5xl">
-            The map around you is <span className="text-primary">the arena</span>.
-          </h1>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-            Walk your city to claim zones, hunt boosters where they spawn, and duel other players
-            in realtime AR battles with an AI-generated fighter of your own. Runs in the browser —
-            install it to your home screen and it opens straight into the arena, full screen.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/play">
-              <Button>
-                Enter the arena
-                <ArrowRight className="size-4" />
-              </Button>
-            </Link>
-            <Link href="/docs">
-              <Button variant="outline">
-                <BookOpen className="size-4" />
-                Developer docs
-              </Button>
-            </Link>
-          </div>
-        </section>
-
-        <section className="mt-14">
-          <h2 className="font-display text-xl font-semibold">Modules</h2>
-          <p className="mb-5 mt-1 text-sm text-muted-foreground">
-            One oRPC namespace per module, one service file behind it. Extend by adding a file,
-            not by editing the core.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {MODULES.map((module) => {
-              const Icon = module.icon;
-              return (
-                <Panel key={module.title}>
-                  <PanelHeader className="items-center justify-start gap-2">
-                    <Icon className="size-4 text-primary" />
-                    <PanelTitle>{module.title}</PanelTitle>
-                  </PanelHeader>
-                  <PanelBody className="space-y-3">
-                    <p className="text-sm leading-relaxed text-muted-foreground">
-                      {module.blurb}
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {module.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded border border-border bg-secondary/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </PanelBody>
-                </Panel>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="mt-14 grid gap-6 lg:grid-cols-[1.15fr_1fr]">
-          <div>
-            <h2 className="font-display text-xl font-semibold">Server-authoritative by design</h2>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              The client never decides an outcome. It reports intent — a pose, an attack, an
-              ability — and the engine validates range, cooldown and state before anything is
-              written or broadcast. Rewards, loot rolls, prices and GPS proximity are resolved the
-              same way.
+      {/* ------------------------------------------------------------ hero */}
+      <section className="relative isolate border-b border-border">
+        <div
+          className="absolute inset-0 -z-10 opacity-60"
+          style={{
+            background:
+              "radial-gradient(60% 50% at 80% 30%, oklch(0.85 0.19 124 / 10%), transparent 70%), radial-gradient(40% 40% at 10% 90%, oklch(0.79 0.16 72 / 8%), transparent 70%)",
+          }}
+        />
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 pb-14 pt-24 sm:px-6 lg:grid-cols-12 lg:gap-6 lg:pb-20 lg:pt-28">
+          <div className="lf-rise lg:col-span-6 lg:pt-6">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-primary">
+              Free · plays in your phone's browser
             </p>
-            <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-              <li className="flex gap-2">
-                <Shield className="mt-0.5 size-4 shrink-0 text-primary" />
-                Every mutation flows through <Mono>playerProc</Mono>; the console adds{" "}
-                <Mono>adminProc</Mono> on top.
-              </li>
-              <li className="flex gap-2">
-                <Radio className="mt-0.5 size-4 shrink-0 text-primary" />
-                Durable events carry a monotonic <Mono>seq</Mono>, so a reconnect replays exactly
-                what was missed.
-              </li>
-              <li className="flex gap-2">
-                <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
-                AI content stays inside server-side rarity budgets — generated items cannot break
-                balance.
-              </li>
-              <li className="flex gap-2">
-                <Database className="mt-0.5 size-4 shrink-0 text-primary" />
-                Drizzle schema on Turso (SQLite); named tables for players, avatars, boosters,
-                zones, spawns, matches, listings, transactions and cron runs.
-              </li>
-            </ul>
+            <h1 className="mt-4 font-display text-[2.6rem] font-bold uppercase leading-[0.95] sm:text-6xl">
+              Your local park <br className="hidden sm:block" />
+              is the <span className="text-primary">arena</span>.
+            </h1>
+            <p className="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+              GeoFights is an AR battle game played outdoors. Walk to a park, pitch or playground
+              near you, pick up free upgrades that drop there just for you, and fight other players
+              on the grass you're standing on. Win, and you take one of their upgrades.
+            </p>
+
+            <div
+              id="join"
+              className="lf-rise mt-8 max-w-md scroll-mt-24 rounded-xl border border-primary/30 bg-card/90 p-5 shadow-[0_0_0_1px_oklch(0.85_0.19_124/6%),0_30px_60px_-20px_rgba(0,0,0,0.6)] backdrop-blur"
+              style={{ animationDelay: "120ms" }}
+            >
+              <SignInCard initialMode="up" />
+              <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
+                After you sign in, the game asks for your location — that's how it finds the play
+                areas around you. Players under 16 need a parent or guardian to switch it on.
+              </p>
+            </div>
           </div>
-          <CodeBlock
-            label="quick match"
-            code={`const avatar = await game.avatars.generate({
-  theme: "scrapyard sentinel",
-});
 
-const match = await game.matches.quick({
-  avatarId: avatar.id, lat, lng,
-});
-
-const stream = new EventSource(
-  \`/api/realtime/match/\${match.id}\`,
-);
-
-await game.battle.attack({
-  matchId: match.id, targetPlayerId,
-});`}
-          />
-        </section>
-
-        <section className="mt-14">
-          <h2 className="font-display text-xl font-semibold">Where things live</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <CodeBlock
-              label="api"
-              code={`packages/web/src/api/
-  routes/      one file per namespace
-  services/    game logic (players, avatars,
-               boosters, nature, marketplace,
-               matchmaking, cron)
-  battle/      authoritative engine
-  realtime/    bus.ts + stream.ts (SSE)
-  ai/          gateway + content generators
-  database/    schema.ts (Drizzle)`}
-            />
-            <CodeBlock
-              label="web"
-              code={`packages/web/src/web/
-  pages/       index, admin, docs
-  components/  admin/* console tabs
-               ui/* primitives
-  queries/     typed oRPC hooks
-  lib/         api client, formatters`}
-            />
+          <div className="lf-rise relative lg:col-span-6 lg:-mr-16 lg:self-center" style={{ animationDelay: "220ms" }}>
+            <HeroArt />
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------- how it works */}
+      <section className="border-b border-border" aria-labelledby="how">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-24">
+          <h2 id="how" className="font-display text-3xl font-bold uppercase sm:text-4xl">
+            How GeoFights works
+          </h2>
+          <ol className="mt-12 grid gap-12 md:grid-cols-3 md:gap-8">
+            <Step
+              n="01"
+              icon={<Sparkles className="size-5" />}
+              title="Describe your fighter"
+              body="Type what you want — a spiky dragon, a rock golem, a glowing fox — and the game builds it, with its own moves, stats and personality."
+            />
+            <Step
+              n="02"
+              icon={<Gift className="size-5" />}
+              title="Walk out and collect"
+              body="Near a park, sports pitch or playground? Free upgrades drop there for you, a few times a day. Nobody else can see yours — you just have to walk to it."
+            />
+            <Step
+              n="03"
+              icon={<Swords className="size-5" />}
+              title="Fight for keeps"
+              body="Battle players in the same place, in AR on your phone's camera. The loser gives up one upgrade their fighter was wearing — the winner can equip it or sell it in the Market."
+            />
+          </ol>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------ safety */}
+      <section className="border-b border-border" aria-labelledby="safety">
+        <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-12 lg:py-24">
+          <div className="lg:col-span-5">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">For players and parents</p>
+            <h2 id="safety" className="mt-3 font-display text-3xl font-bold uppercase sm:text-4xl">
+              Built to be played outside, safely
+            </h2>
+            <p className="mt-4 text-muted-foreground">
+              A game that sends people walking needs rules about where. These are enforced by the
+              game server, not left to good intentions.
+            </p>
+          </div>
+          <ul className="grid gap-6 sm:grid-cols-2 lg:col-span-7">
+            <Rule
+              icon={<Trees className="size-5" />}
+              title="Only reviewed play areas"
+              body="Parks, pitches and playgrounds are checked by a person before anyone is sent there. Unreviewed places get no drops and no fights."
+            />
+            <Rule
+              icon={<ShieldCheck className="size-5" />}
+              title="Never on a road"
+              body="Roads, railways, water and private land are no-go zones. Upgrades are never placed on or near them, and pickups there are refused."
+            />
+            <Rule
+              icon={<Car className="size-5" />}
+              title="Walk, don't drive"
+              body="Move faster than walking pace and the game pauses. It can't be played from a car or a bike."
+            />
+            <Rule
+              icon={<Eye className="size-5" />}
+              title="Your exact spot stays private"
+              body="Location is used while you play. Other players never see your exact position."
+            />
+          </ul>
+        </div>
+      </section>
+
+      {/* --------------------------------------------------------------- faq */}
+      <section className="border-b border-border" aria-labelledby="faq">
+        <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:py-24">
+          <h2 id="faq" className="font-display text-3xl font-bold uppercase sm:text-4xl">
+            Questions
+          </h2>
+          <FAQ />
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------ closing CTA */}
+      <section>
+        <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 px-4 py-16 sm:px-6 md:flex-row md:items-center">
+          <div className="flex items-center gap-4">
+            <MapPinned className="size-10 shrink-0 text-primary" />
+            <p className="font-display text-2xl font-bold uppercase leading-tight sm:text-3xl">
+              There's probably a park near you.
+            </p>
+          </div>
+          <a href="#join" className="md:ml-auto">
+            <Button size="lg">
+              <Users className="size-4" />
+              Create your player
+              <ArrowRight className="size-4" />
+            </Button>
+          </a>
+        </div>
+        <footer className="border-t border-border">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-6 text-xs text-muted-foreground sm:px-6">
+            <span className="font-display font-semibold uppercase tracking-[0.14em] text-foreground">
+              Geo<span className="text-primary">Fights</span>
+            </span>
+            <span>© {new Date().getFullYear()} GeoFights</span>
+            <Link href="/play" className="hover:text-foreground">
+              Play
+            </Link>
+          </div>
+        </footer>
+      </section>
     </div>
   );
 }
 
-const MODULES = [
-  {
-    title: "Players",
-    icon: Shield,
-    blurb:
-      "Email/password accounts via Better Auth, with a game profile created on first authenticated call. XP, level, currency, GPS heartbeat, roles.",
-    tags: ["players.*", "better-auth", "progression"],
-  },
-  {
-    title: "AI avatars",
-    icon: Bot,
-    blurb:
-      "Battle characters generated by the AI engine: name, backstory, look, stat block and a signature ability, rolled inside rarity budgets. Three slots per player.",
-    tags: ["avatars.*", "rarity budgets", "3 slots"],
-  },
-  {
-    title: "Boosters",
-    icon: Zap,
-    blurb:
-      "Stat modifiers that can unlock abilities. Bought in the rotating shop, found in the wild, won in battle, or resold — and upgradable to higher tiers.",
-    tags: ["boosters.*", "tiers", "equip 3"],
-  },
-  {
-    title: "Nature exploration",
-    icon: MapPin,
-    blurb:
-      "GPS zones seeded with booster spawns by a daily cron. Pickups are proximity-gated on the server, so location cannot be faked past the radius check.",
-    tags: ["nature.*", "haversine", "daily spawn"],
-  },
-  {
-    title: "Marketplace",
-    icon: Store,
-    blurb:
-      "Fixed-price player-to-player trading in in-game currency only. The house takes 10% on every sale; operators can take a listing down without paying out.",
-    tags: ["marketplace.*", "10% fee", "ledger"],
-  },
-  {
-    title: "Matchmaking",
-    icon: Swords,
-    blurb:
-      "Lobbies of 2–4 players with a one-call quick-match that joins the nearest open lobby or opens one. Stale lobbies and abandoned matches are reaped.",
-    tags: ["matches.*", "2–4 players", "quick"],
-  },
-  {
-    title: "Battle engine",
-    icon: Radio,
-    blurb:
-      "Authoritative combat: validated attacks and abilities, cooldowns, damage resolution, death and settlement — with an AI-written recap at the end.",
-    tags: ["battle.*", "cooldowns", "battle_event"],
-  },
-  {
-    title: "Realtime",
-    icon: Radio,
-    blurb:
-      "One channel per match carrying eight event types. SSE on this runtime, with a WebSocket-equivalent contract isolated in a single module.",
-    tags: ["/api/realtime", "seq replay", "heartbeat"],
-  },
-  {
-    title: "Economy & cron",
-    icon: Coins,
-    blurb:
-      "Every coin movement is a ledger row. Four idempotent jobs handle spawns, zone reweighting, the weekly leaderboard and the weekly AI drop.",
-    tags: ["transactions", "cron_run", "POST /api/cron"],
-  },
-] as const;
+function Step(props: { n: string; icon: React.ReactNode; title: string; body: string }) {
+  return (
+    <li className="relative">
+      <span className="font-display text-6xl font-bold leading-none text-transparent [-webkit-text-stroke:1px_oklch(0.85_0.19_124/55%)]">
+        {props.n}
+      </span>
+      <div className="mt-4 flex items-center gap-2 text-primary">
+        {props.icon}
+        <h3 className="font-display text-xl font-semibold uppercase text-foreground">{props.title}</h3>
+      </div>
+      <p className="mt-3 leading-relaxed text-muted-foreground">{props.body}</p>
+    </li>
+  );
+}
 
-export default Index;
+function Rule(props: { icon: React.ReactNode; title: string; body: string }) {
+  return (
+    <li className="border-l-2 border-primary/40 pl-4">
+      <div className="flex items-center gap-2 text-primary">
+        {props.icon}
+        <h3 className="font-display text-base font-semibold uppercase text-foreground">{props.title}</h3>
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{props.body}</p>
+    </li>
+  );
+}
+
+export default Landing;

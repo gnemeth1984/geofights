@@ -32,9 +32,10 @@ lose a fight → lose an upgrade; winner uses or sells it; community with age ve
 - [x] verify: typecheck, lint baseline 4, build, check:combat 150, smoke, safety smoke,
       `packages/web/scripts/combat/stakes-check.ts` 44/44 (real DB, self-cleaning)
 - [x] fix: drop hazard scan used 100m, now the safety layer's 250m
-- [ ] commit + push
+- [x] commit + push (stakes/market, drops)
 - [ ] ask: community/age verification + location strictness
-- [ ] landing `/` + SEO (static crawlable HTML, robots, sitemap, JSON-LD, canonical), dev → `/dev`
-- [ ] docs.tsx: `forfeits` in match_finished payload; UI for drop allowance
+- [x] landing `/` + SEO (static crawlable HTML, robots, sitemap, JSON-LD, canonical), dev → `/dev`
+- [x] docs.tsx: `forfeits` in match_finished payload
+- [ ] UI for drop allowance (`nature.drops`) — play.tsx is at its line limit, needs a component
 
 Run the stakes check: `cd packages/web && bun --env-file=../../.env scripts/combat/stakes-check.ts`

@@ -1,0 +1,10 @@
+# GeoFights — only the landing page is meant to be found in search.
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /dev
+Disallow: /docs
+Disallow: /character-lab
+Disallow: /api/
+
+Sitemap: https://geofights.com/sitemap.xml
