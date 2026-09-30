@@ -67,13 +67,20 @@ export const boosters = {
       const rows = await db
         .select()
         .from(schema.booster)
+        // Tier 1 only. `upgrade()` mints a tier+1 definition that inherits the
+        // origin of the one it refits, so without this the shop fills up with
+        // other players' upgrade artifacts — each 1.8x the price of the last.
         .where(
           input?.rarity
             ? and(
                 eq(schema.booster.rarity, input.rarity),
                 inArray(schema.booster.origin, ["shop", "any"]),
+                eq(schema.booster.tier, 1),
               )
-            : inArray(schema.booster.origin, ["shop", "any"]),
+            : and(
+                inArray(schema.booster.origin, ["shop", "any"]),
+                eq(schema.booster.tier, 1),
+              ),
         )
         .orderBy(desc(schema.booster.createdAt))
         .limit(input?.limit ?? 40);

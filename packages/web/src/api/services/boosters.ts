@@ -429,6 +429,12 @@ export async function purchase(input: { boosterId: string; playerId: string }) {
     .where(eq(schema.booster.id, input.boosterId));
   if (!definition) throw new ORPCError("NOT_FOUND", { message: "Booster not found" });
   if (definition.price <= 0) throw new ORPCError("BAD_REQUEST", { message: "Not for sale" });
+  // Upgraded definitions are refits of one player's instance, not shop stock —
+  // they carry the origin they were refitted from, so they have to be refused
+  // here too and not just filtered out of the listing.
+  if (definition.tier > 1) {
+    throw new ORPCError("BAD_REQUEST", { message: "Upgrade-only refit, not for sale" });
+  }
 
   await adjustCurrency(input.playerId, -definition.price);
   const instance = await mintBoosterInstance({
