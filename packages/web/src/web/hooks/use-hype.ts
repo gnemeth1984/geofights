@@ -201,11 +201,21 @@ export function useHype(
 
   const reportPayload = React.useCallback(
     (payload: Record<string, unknown>, mine: boolean, message: string | null) => {
+      /*
+       * The ceiling comes with the blow. The roster is kept behind it only as a
+       * fallback, for a payload sent by something older than this: a blow that
+       * arrives before the roster has answered still has to read as the danger
+       * it is, and that is the whole reason the server sends the number.
+       */
+      const sent = typeof payload.maxHealth === "number" ? payload.maxHealth : null;
       const targetId = typeof payload.targetPlayerId === "string" ? payload.targetPlayerId : null;
-      const target = targetId
-        ? playersRef.current.find((player) => player.playerId === targetId)
+      const fromRoster = targetId
+        ? playersRef.current.find((player) => player.playerId === targetId)?.maxHealth
         : undefined;
-      report(exchangeFromPayload(payload, mine, target?.maxHealth ?? null, !takenAHit.current), message);
+      report(
+        exchangeFromPayload(payload, mine, sent ?? fromRoster ?? null, !takenAHit.current),
+        message,
+      );
     },
     [report],
   );

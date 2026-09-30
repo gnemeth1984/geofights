@@ -789,6 +789,16 @@ export async function attack(input: AttackInput) {
       variance: result.variance,
       expected: result.expected,
       targetHealth,
+      /**
+       * The receiver's ceiling, sent with every blow.
+       *
+       * The client reads how close this is to the end from the ratio, and it
+       * used to find the ceiling by looking the receiver up in the match
+       * roster — which meant a blow landing before that roster had answered
+       * was read as harmless. The number is right here on the row, so it
+       * travels with the blow instead.
+       */
+      maxHealth: receiver.maxHealth,
       source: "attack",
       rangeM: range,
       gapM,
@@ -911,6 +921,8 @@ export async function useAbility(input: {
     playerId: string;
     damage: number;
     health: number;
+    /** The receiver's ceiling, so the callout can read the ratio without a roster. */
+    maxHealth: number;
     killed: boolean;
     defenseType?: string | null;
   }[] = [];
@@ -958,6 +970,7 @@ export async function useAbility(input: {
         playerId: target.playerId,
         damage: result.damage,
         health: result.targetHealth,
+        maxHealth: target.maxHealth,
         killed: result.killed,
         defenseType: targetBody
           ? pickDefenseMove({
@@ -1017,6 +1030,7 @@ export async function useAbility(input: {
         targetPlayerId: hit.playerId,
         damage: hit.damage,
         targetHealth: hit.health,
+        maxHealth: hit.maxHealth,
         source: "ability",
         abilityName: ability.name,
         attackType,

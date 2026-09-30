@@ -41,3 +41,26 @@ bubbles, milestone callouts (FIRST BLOOD / COMBO / CRITICAL / FINISH). Both PvP 
   address the opponent, non-combat still address the pilot
 - routing verified in-browser: light blow -> silence, my crit -> taunt_landed, heavy blow on me
   -> taunt_hurt, me under 20% health -> near_death, whiff -> silence
+
+## Send the health ceiling with the blow
+
+`avatar_damage` now carries `maxHealth` alongside `targetHealth`, at both emit
+sites in `api/battle/engine.ts` — the attack path and the per-hit ability path
+(whose `hits` rows carry the receiver's ceiling for it). `use-hype.ts` reads it
+off the payload and keeps the roster lookup only as a fallback.
+
+Why: DANGER, FINISH and the character's `near_death` line all need a fraction,
+and the client used to get the ceiling from the match roster. A blow landing
+before that roster answered was read as harmless and the call was dropped.
+
+Verified in a browser with the roster deliberately empty (`scripts/verify-maxhealth.py`):
+
+  - 12/100 with `maxHealth` on the payload -> FINISH IT
+  - the same blow without it              -> NICE HIT (the old silent drop)
+  - their crit leaving me on 9/120        -> `near_death` spoken
+  - the same without it                   -> `taunt_hurt` only
+  - an ability hit at 10/140              -> FINISH IT
+  - a killing blow                        -> K.O., unchanged
+
+Zero console errors. typecheck, lint (at the 4 pre-existing baseline errors) and
+the web build all clean.
