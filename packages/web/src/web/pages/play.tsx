@@ -56,11 +56,21 @@ import {
 import { trainingStats } from "../../api/lib/training-stats";
 import { isAnimationState, strikeFrames, type AnimationState } from "@/ar/character";
 import { cueForMove, playCue } from "@/ar/sfx";
-import { newSparringSeed, pickRandom, rollSparringPartner, sparTaunt } from "@/ar/sparring";
+import {
+  SPAR_GUARD_CHANCE,
+  newSparringSeed,
+  pickBotMove,
+  pickRandom,
+  rollSparringPartner,
+  sparTaunt,
+} from "@/ar/sparring";
 import { compassPoint } from "@/ar/heading";
 import type { Marker } from "@/ar/markers";
+import { HypeBanner } from "@/components/play/hype-banner";
 import { useArStage } from "@/hooks/use-ar-stage";
 import { useAvatarVoice } from "@/hooks/use-avatar-voice";
+import { useHype } from "@/hooks/use-hype";
+import { exchangeLine } from "@/lib/hype";
 import { INPUT_BUFFER_MS, useCommitClock } from "@/hooks/use-commit-clock";
 import { useGeo } from "@/hooks/use-geo";
 import { useMatchChannel } from "@/hooks/use-match-channel";
@@ -168,79 +178,6 @@ function bookStrikes(state: AnimationState, land: (index: number) => void): numb
     window.setTimeout(() => land(index), frame.at * 1_000),
   );
 }
-/**
- * One exchange, in one line.
- *
- * Every number in here was already computed and sent by the engine — the
- * grade it graded the guard at, the roll it rolled, the crit chance that roll
- * was against, how much breath the swing was thrown on. None of it was ever
- * visible, so a player who threw the same move twice for 19 and then 31 had no
- * way to tell variance from a mechanic they had failed to learn. This does not
- * decide anything; it reads the payload back.
- */
-function exchangeLine(payload: Record<string, unknown>, mine: boolean): string {
-  const number = (key: string): number | null =>
-    typeof payload[key] === "number" ? (payload[key] as number) : null;
-
-  const parts: string[] = [mine ? "You" : "Them"];
-  const label = typeof payload.gradeLabel === "string" ? payload.gradeLabel : null;
-  if (label) parts.push(label);
-
-  const damage = number("damage");
-  if (payload.whiff === true) parts.push("no contact");
-  else if (damage != null) parts.push(`${damage} dmg`);
-
-  if (payload.crit === true) parts.push("CRIT");
-  else {
-    const chance = number("critChance");
-    if (chance != null) parts.push(`crit ${Math.round(chance * 100)}%`);
-  }
-
-  // Variance comes back as a multiplier around 1 — shown as the swing it was
-  // against the average, which is the form the question was asked in.
-  const variance = number("variance");
-  if (variance != null && Math.abs(variance - 1) >= 0.01) {
-    const swing = Math.round((variance - 1) * 100);
-    parts.push(`roll ${swing > 0 ? "+" : ""}${swing}%`);
-  }
-
-  const staminaScale = number("staminaScale");
-  if (staminaScale != null && staminaScale < 1) {
-    parts.push(`winded ×${staminaScale.toFixed(2)}`);
-  }
-  if (payload.cornered === true) parts.push("cornered");
-  if (payload.riposte) parts.push("riposte");
-  // The cancel, named. A window the player cannot see is a window they will
-  // never press into, and "chain open" is the shortest way to say that the
-  // hit they just landed bought them the next one.
-  if (mine && payload.cancelled === true) parts.push("chain open");
-
-  return parts.join(" · ");
-}
-
-/** How often the bot reaches for a combination rather than a single move. */
-const SPAR_COMBO_CHANCE = 0.35;
-/** How often the bot blocks the player's swing instead of wearing it. */
-const SPAR_GUARD_CHANCE = 0.45;
-
-
-/**
- * What the bot throws next.
- *
- * Its offence already holds both kinds — the single moves its body can throw
- * and whatever combinations its level unlocked — so all that is left here is
- * the weighting: roughly a third of its swings reach for a combination, and a
- * body that unlocked none simply never does, because the pool it picks from is
- * its own move list and nothing else.
- */
-function pickBotMove<T extends string>(offence: ReadonlyArray<T>): T | null {
-  const isCombo = (move: T) => (COMBO_MOVES as readonly string[]).includes(move);
-  const combos = offence.filter(isCombo);
-  const singles = offence.filter((move) => !isCombo(move));
-  if (combos.length > 0 && Math.random() < SPAR_COMBO_CHANCE) return pickRandom(combos);
-  return pickRandom(singles.length > 0 ? singles : combos);
-}
-
 function Play() {
   const geo = useGeo();
   const session = useSession();
@@ -618,6 +555,30 @@ function Play() {
   const chromeHidden = (trainingMode || fullscreenBattle) && !chromeRevealed;
   const pullable = trainingMode || fullscreenBattle;
 
+  /* ------------------------------------------------------------------- hype */
+
+  /**
+   * The announcer and the crowd. On in a live fight and in the training area —
+   * the two places blows are thrown — and off everywhere else, so walking
+   * around the map is not scored by a stadium.
+   */
+  const hype = useHype(
+    stage.stage,
+    fullscreenBattle || trainingMode,
+    match.data?.players ?? [],
+    voice.say,
+  );
+  // Pulled out so the effects below can depend on the callbacks rather than on
+  // the whole hook result, whose `banner` changes on every callout and would
+  // otherwise re-run the feed reader on each one.
+  const {
+    reportPayload: reportHype,
+    reportTraining: reportTrainingHype,
+    open: openHype,
+    close: closeHype,
+    reset: resetHype,
+  } = hype;
+
   React.useEffect(() => {
     // The training area is the creature and nothing else: the world overlay —
     // boosters, hazard rings, opponents — is not offering anything there.
@@ -812,8 +773,10 @@ function Play() {
       // The named training cue, not the generic one: a training hit reads as
       // its own event on the ear, distinct from a real swing landing.
       playCue(combo ? "combo_impact" : "training_hit");
+      // The arena reacts in here too, off the same number.
+      reportTrainingHype({ mine: from === "you", damage: result.damage, crit: result.crit, combo });
     },
-    [myTrainingStats, partnerTrainingStats],
+    [myTrainingStats, partnerTrainingStats, reportTrainingHype],
   );
 
   /**
@@ -902,7 +865,9 @@ function Play() {
     telegraph.current = {};
     setIncoming(null);
     setExchange(null);
-  }, [matchId]);
+    // The streak, the heat and the "not a scratch" flag are all per-fight.
+    resetHype();
+  }, [matchId, resetHype]);
 
   React.useEffect(() => {
     const target = stage.stage;
@@ -990,6 +955,16 @@ function Play() {
           // The numbers, in the player's words. The engine already decided
           // them; this only stops them being invisible.
           setExchange(exchangeLine(event.payload, mine));
+
+          /*
+           * The arena's turn. Everything the callout, the announcer and the
+           * crowd react to is read straight off this payload — the same numbers
+           * the line above prints — so the shout can never disagree with the
+           * fight. `message` is the server's own commentary line, written on
+           * every hit since the engine was built and until now rendered nowhere
+           * but the admin console.
+           */
+          reportHype(event.payload, mine, event.message ?? null);
         }
       } else if (event.type === "avatar_action" && event.payload.playerId === myPlayerId) {
         // An ability the caster fired: its own animation, not a generic lurch.
@@ -999,10 +974,17 @@ function Play() {
       } else if (event.type === "avatar_death" && event.payload.playerId === myPlayerId) {
         target.playCharacterAnimation("hit_react");
         playCue("hit");
-      } else if (event.type === "match_finished" && event.payload.winnerPlayerId === myPlayerId) {
-        target.playCharacterAnimation("celebrate");
-        playCue("reaction");
-        voice.say("victory");
+      } else if (event.type === "match_finished") {
+        // The result call closes the arena down either way — a loss gets "You
+        // lose" and the crowd's disappointment, which is the half of a
+        // fighting game's grammar that a silent defeat screen is missing.
+        const won = event.payload.winnerPlayerId === myPlayerId;
+        if (won) {
+          target.playCharacterAnimation("celebrate");
+          playCue("reaction");
+          voice.say("victory");
+        }
+        closeHype(won);
       }
     }
     // Booked timers are kept so they can be cancelled on unmount, which means
@@ -1013,13 +995,28 @@ function Play() {
         .splice(0, feedTimers.current.length - 32)
         .forEach((timer) => window.clearTimeout(timer));
     }
-  }, [channel.feed, myPlayerId, setCommitUntil, stage.stage, voice]);
+  }, [
+    channel.feed,
+    closeHype,
+    reportHype,
+    myPlayerId,
+    setCommitUntil,
+    stage.stage,
+    voice,
+  ]);
 
   // Opening line. Driven by status rather than the `match_started` event so a
   // player who reloads mid-match still hears their character.
   React.useEffect(() => {
     if (match.data?.match.status === "active") voice.say("battle_start");
   }, [match.data?.match.status, voice]);
+
+  // "Fight!" — the announcer's opening, on the same status edge as the
+  // character's own line rather than on `match_started`, so a reload mid-match
+  // does not leave the arena silent.
+  React.useEffect(() => {
+    if (match.data?.match.status === "active") openHype();
+  }, [match.data?.match.status, openHype]);
 
   // Safety comes from the server verdict verbatim — the character only repeats
   // it. A training zone is not a warning, so it does not trigger the line.
@@ -1635,6 +1632,14 @@ function Play() {
         aria-label="Augmented reality scene"
         className="absolute inset-0 size-full touch-none"
       />
+
+      {/*
+        The arcade layer, over the scene and under the controls. Its own
+        absolute sibling rather than a child of the overlay below, so it cannot
+        push the HUD's flex layout around, and `pointer-events-none` throughout
+        so a callout landing over the attack button never eats the press.
+      */}
+      <HypeBanner banner={hype.banner} streak={hype.streak} commentary={hype.commentary} />
 
       <div
         ref={stage.overlayRef}

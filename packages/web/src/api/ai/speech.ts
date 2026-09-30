@@ -28,6 +28,9 @@ export const SPEECH_CONTEXTS = [
   "victory",
   "hazard_warning",
   "idle",
+  "taunt_landed",
+  "taunt_hurt",
+  "near_death",
 ] as const;
 export type SpeechContext = (typeof SPEECH_CONTEXTS)[number];
 
@@ -52,6 +55,23 @@ const SITUATION: Record<SpeechContext, string> = {
   victory: "it just won the match",
   hazard_warning: "the area it is standing in has been flagged unsafe to play in",
   idle: "nothing is happening — it is standing on the pavement waiting for its pilot",
+  taunt_landed: "it has just landed a heavy blow on the other character and has the upper hand",
+  taunt_hurt: "the other character has just hit it hard and it is smarting from it",
+  near_death: "it is one hit from being knocked out and it knows it",
+};
+
+/**
+ * Who the line is aimed at.
+ *
+ * Most contexts are the character talking to its own pilot. The combat ones are
+ * not: a blow just landed and the character has someone standing in front of it,
+ * so it speaks across the ring instead. Getting this wrong is the difference
+ * between trash talk and a status report.
+ */
+const ADDRESSEE: Partial<Record<SpeechContext, string>> = {
+  taunt_landed: "It speaks to the other character, not to its pilot. This is trash talk.",
+  taunt_hurt: "It speaks to the other character, not to its pilot. It will not admit it hurt.",
+  near_death: "It speaks to the other character, not to its pilot. Defiant, not pleading.",
 };
 
 /**
@@ -100,7 +120,8 @@ export async function generateAvatarSpeech(input: {
         ${input.detail ? `Relevant detail: ${input.detail}.` : ""}
 
         Write exactly one line it says out loud, in character, at most 14 words.
-        It speaks to its own pilot, not to the camera. Plain text only.
+        ${ADDRESSEE[input.context] ?? "It speaks to its own pilot, not to the camera."}
+        Plain text only.
       `,
     });
     const line = clean(text);
@@ -135,6 +156,9 @@ const BANKS: Record<Personality, Bank> = {
     victory: ["Was that it? Next.", "Told you. Not close."],
     hazard_warning: ["Bad ground. I don't like it either.", "Not here. Back up."],
     idle: ["Standing around isn't winning.", "Any day now, pilot."],
+    taunt_landed: ["Felt that one, did you?", "Stay down, it's easier."],
+    taunt_hurt: ["That's all you've got?", "Cute. My turn."],
+    near_death: ["Still standing. Come on.", "You'll have to do better than that."],
   },
   stoic: {
     booster_found: ["Module. Nearby.", "Something's out there. Worth a look."],
@@ -143,6 +167,9 @@ const BANKS: Record<Personality, Bank> = {
     victory: ["Done.", "Match closed. No damage worth logging."],
     hazard_warning: ["This spot is unsafe. Moving is better.", "Not here."],
     idle: ["Holding position.", "Still here."],
+    taunt_landed: ["That one counted.", "You left it open."],
+    taunt_hurt: ["Noted.", "Not enough."],
+    near_death: ["Still here.", "One left. Make it count."],
   },
   manic: {
     booster_found: ["Ooh — parts, parts, parts! Left? It's left!", "I smell upgrades. Go go go."],
@@ -151,6 +178,9 @@ const BANKS: Record<Personality, Bank> = {
     victory: ["Did you see that? Did you SEE that?", "Again! Let's do it again!"],
     hazard_warning: ["Nope nope nope. Wrong ground. Out.", "Bad spot! Bad spot! Move!"],
     idle: ["Are we going? We going? Let's go.", "I could be doing something right now."],
+    taunt_landed: ["Oh that landed, that LANDED — again?", "Ha! Did that hurt? It hurt!"],
+    taunt_hurt: ["Ow — rude! Okay! Okay!", "That's fine, that's fine, I'm fine!"],
+    near_death: ["Nearly done and still talking! Come on!", "One hit! One! Try it!"],
   },
   cold: {
     booster_found: ["Module detected within range.", "Signal reads as a pickup. Recommend collection."],
@@ -159,6 +189,9 @@ const BANKS: Record<Personality, Bank> = {
     victory: ["Objective complete. Efficiency noted.", "Opponent disabled. Logging result."],
     hazard_warning: ["Location flagged unsafe. Withdraw.", "Risk exceeds tolerance. Relocate."],
     idle: ["Systems nominal. Awaiting input.", "Idle. Power draw minimal."],
+    taunt_landed: ["Damage confirmed. Your guard is predictable.", "Optimal opening. Expect another."],
+    taunt_hurt: ["Impact logged. Adjusting.", "Acceptable loss. Recalculating."],
+    near_death: ["One hit from failure. Odds still calculable.", "Critical. Proceeding anyway."],
   },
   loyal: {
     booster_found: ["Something good out there. Want me to wait?", "There's a module close. Your call."],
@@ -167,6 +200,9 @@ const BANKS: Record<Personality, Bank> = {
     victory: ["We did that together.", "You picked the right fight."],
     hazard_warning: ["I don't like this spot. Please step back.", "Your safety first. Let's move."],
     idle: ["Take your time. I'm not going anywhere.", "Whenever you're ready."],
+    taunt_landed: ["That's for my pilot.", "I told you we were ready."],
+    taunt_hurt: ["I can take it. Keep going.", "That won't stop us."],
+    near_death: ["I'm not falling. Not yet.", "Still on my feet. Still theirs."],
   },
   feral: {
     booster_found: ["Something close. Want.", "Scrap. Near. Take it."],
@@ -175,6 +211,9 @@ const BANKS: Record<Personality, Bank> = {
     victory: ["Down. Stay down.", "Broke it. Find another."],
     hazard_warning: ["Wrong ground. Hurts.", "No. Not here."],
     idle: ["Restless.", "Too quiet. Hunt soon."],
+    taunt_landed: ["Bleed.", "Again. Hold still."],
+    taunt_hurt: ["Hurts. Good.", "More. Do it again."],
+    near_death: ["Not down. Never down.", "Break me. Try."],
   },
 };
 

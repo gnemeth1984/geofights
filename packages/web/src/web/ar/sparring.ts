@@ -1,4 +1,5 @@
 import {
+  COMBO_MOVES,
   modelIdForForm,
   movesForForm,
   nameForForm,
@@ -89,4 +90,26 @@ const TAUNTS = [
 /** The line this partner opens with — stable for the seed, like its body. */
 export function sparTaunt(seed: number): string {
   return TAUNTS[Math.abs(Math.round(seed)) % TAUNTS.length]!;
+}
+
+/** How often the bot reaches for a combination rather than a single move. */
+export const SPAR_COMBO_CHANCE = 0.35;
+/** How often the bot blocks the player's swing instead of wearing it. */
+export const SPAR_GUARD_CHANCE = 0.45;
+
+/**
+ * What the bot throws next.
+ *
+ * Its offence already holds both kinds — the single moves its body can throw
+ * and whatever combinations its level unlocked — so all that is left here is
+ * the weighting: roughly a third of its swings reach for a combination, and a
+ * body that unlocked none simply never does, because the pool it picks from is
+ * its own move list and nothing else.
+ */
+export function pickBotMove<T extends string>(offence: ReadonlyArray<T>): T | null {
+  const isCombo = (move: T) => (COMBO_MOVES as readonly string[]).includes(move);
+  const combos = offence.filter(isCombo);
+  const singles = offence.filter((move) => !isCombo(move));
+  if (combos.length > 0 && Math.random() < SPAR_COMBO_CHANCE) return pickRandom(combos);
+  return pickRandom(singles.length > 0 ? singles : combos);
 }

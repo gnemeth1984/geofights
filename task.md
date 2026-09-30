@@ -1,269 +1,43 @@
-# Character look pass — chibi armour
+# Fight hype layer (Tekken energy)
 
-Goal: GeoFights characters read as the two reference figures — big rounded head
-(~40% of height), small torso, short stubby limbs, wide stance, glossy
-hard-surface armour with panel seams and glowing trim lines. Fully procedural,
-zero downloads (no GLTF/GLB, ever), 60fps on a mid-range phone, applies to
-every existing character.
+Ask: fights feel boring. Want cheering, esports announcer TTS, character trash-talk
+bubbles, milestone callouts (FIRST BLOOD / COMBO / CRITICAL / FINISH). Both PvP and training.
 
-## Decisions
-- Chibi proportions apply to **every** character, including the serpentine,
-  insectoid and orb body shapes — each shape is adapted to the proportions, none
-  is dropped.
-- **Hybrid surface**: armour plates are worn *over* the themed skin (scale, hide,
-  fur, chitin, facets all stay). A dragon is scaled *under* armour, not replaced
-  by it.
-- Glow trim on every character, in that character's own accent colour — not one
-  uniform colour across the roster.
-- Say "character", never "robot".
+## Plan
+1. Assets: announcer VO (pre-rendered mp3, instant + free at runtime) in public/hype/,
+   crowd cheer / gasp / bed sfx.
+2. `src/web/lib/hype.ts` — pure: milestone detection from an exchange, combo tracker,
+   banner text, VO file mapping, opponent heel-taunt bank. Shared by PvP + training.
+3. `src/web/ar/hype.ts` — playback: announcer queue (one at a time, priority), crowd
+   bed that swells with the fight, gasps on big hits. Uses the sfx module's audio graph.
+4. `src/web/components/play/hype-banner.tsx` — big arcade callout + combo counter +
+   commentary ticker (renders `event.message`, the AI line the server already writes).
+5. Wire: play.tsx (avatar_damage / avatar_death / match_started) + training hits.
+6. speech.ts: new combat contexts (taunt_landed / taunt_hurt / near_death) so the
+   character trash-talks out of its own personality bank.
 
-## Constraint that shapes everything
-`character.ts`'s update pass writes `position`/`rotation`/`scale` onto individual
-`Object3D`s (segments, legs, arms, headGroup, wings, tailPivot, spikes). A
-`THREE.Bone` IS an `Object3D`, so bones and pivots are driven by the same channel
-code — every existing channel, curve and move keeps working, dash_strike
-included. No animation rewrite, no move retuning.
+## Status
+- [x] plan
+- [x] assets — 18 mp3 in packages/web/public/hype (14 announcer calls, 4 crowd), ~272 KB
+- [x] hype.ts (pure) — reducer, ranks, cooldowns, banners, taunt bank, exchangeLine
+- [x] hype audio — shared graph via sfxGraph(), announcer queue-of-one, ducking, crowd bed
+- [x] banner UI — callout + combo counter + commentary ticker, reduced-motion aware
+- [x] wiring — useHype in play.tsx: match active / avatar_damage / match_finished / training hits
+- [x] trash talk contexts — 3 new SPEECH_CONTEXTS (taunt_landed / taunt_hurt / near_death) with
+      an ADDRESSEE map so combat lines are aimed across the ring instead of at the pilot,
+      hand-written fallbacks for all 6 personalities, cooldowns + priority in use-avatar-voice.
+      Only the player's own character speaks through it; the opponent keeps the deterministic
+      bank in lib/hype.ts (never a model call on another player's behalf)
+- [x] verify: typecheck / lint (4 pre-existing errors only) / build / playwright
 
-## Done
-- [x] Lighting rig (`lighting.ts`): PCFSoft shadow map, three-point key/fill/rim,
-      ACES filmic tone mapping, shadow-catcher ground.
-- [x] Procedural materials (`skin.ts`): canvas-generated normal/roughness/AO per
-      theme (hide, scale, fur, carapace, crystal, feather, panel). Generated in
-      code, cached by key, shared between characters.
-- [x] Anatomy (`anatomy.ts`): neck, shoulder/hip masses, two-segment limbs with
-      knee/elbow joints, spine curve — driven by the existing channels.
-- [x] Armour shell (`shell.ts`): plates as bevelled ellipsoid patches with rolled
-      edges, trim as tubes traced over the surface, merged to two meshes per part.
-- [x] Chibi proportions: head ratio table, wide stance, near-cylindrical stubby
-      limbs (`LEG_TAPER`/`ARM_TAPER`), torso width floored against the head radius
-      so a big head never sits on a lollipop body.
-- [x] Helmet fit: sized and centred on the cranium — the block head's bulkiest
-      piece — off width and height only, so a snout no longer throws it off.
-- [x] Plate and trim colour: plate is the body colour pulled a quarter toward the
-      accent and held inside a lightness band; trim runs off the accent (not the
-      near-white glow tint), floored so a low-glow theme still reads as lit and
-      capped so it never clips back to white.
-- [x] Rounded torso (`armorTorso`) and rounded chin, replacing the box crate and
-      the box chin that read as a crate and a sticker.
-- [x] Environment map: `RoomEnvironment` prefiltered once into a 256px PMREM and
-      assigned to the scene at 0.42 intensity, with the hemisphere bed pulled down
-      to compensate. This is what makes a plate read as lacquered armour instead
-      of matte vinyl, and what stops a dark shell reading as a flat black hole.
-- [x] Verify: typecheck, `skin-shot.py` across all six themes (no shader errors),
-      `dash-check.py` (dash, combos, facing, cues all pass), draw cost probe.
-
-## Cost, level 5 (heaviest loadout)
-Measured after the sculpt pass moved the blocks from stacked primitives onto
-lofted surfaces, which is why the triangle counts are well above the numbers
-this table carried before it: a sculpt buys its silhouette in triangles, and
-triangles were never the scarce thing.
-
-| theme | meshes before merge | meshes | triangles |
-| --- | --- | --- | --- |
-| dragon | 73 | 61 | 21.4k |
-| insect | 71 | 66 | 27.5k |
-| beast | 45 | 40 | 19.5k |
-| construct | 47 | 43 | 24.3k |
-| bird | 77 | 46 | 21.1k |
-| elemental | 53 | 48 | 23.8k |
-| **total** | **366** | **304** | |
-
-Triangles are nowhere near a budget. Draw calls were the metric to watch, and
-the lever has now been pulled — `collapseStatics` took 17% of the meshes out
-across the roster and 40% out of the worst case. Two dragons in one fight is
-~122 meshes a frame rather than ~146. What is left is mostly irreducible: the
-remaining multi-mesh groups are single body parts carrying two materials (shell
-plus glow), and one mesh can only hold one material.
-
-## Open
-- [ ] Real on-device FPS pass (the sandbox renders in software, so its frame
-      times say nothing about a phone).
-
-## Sculpt and draw-call pass
-Bodies that were assembled out of stacked primitives now read as one merged
-organic silhouette, and the draw calls that assembly cost are gone.
-
-- [x] `armorTorso`, `catEar`, `hornedEar` and `spriteHead` rebuilt as `flesh()`
-      sculpts instead of piles of spheres and boxes, with a new `curl()` helper
-      for horns and tufts. `curl()` needs its tip radius at 1.5x the grid cell
-      or the grid cannot resolve a tip, and its lump-to-lump reach along the
-      path had to go from 0.85 to 1.35 of the step to stop the finer grid
-      showing the individual lumps.
-- [x] Limb segments read as moulded segments rather than a stack of beads at
-      the joints.
-- [x] Cheek plates follow the jawline instead of cutting a straight edge across
-      it at a fixed latitude.
-- [x] `buildNeck`/`NeckSpec` deleted — nothing ever called them. Heads sit
-      directly on the trunk with deliberate overlap, which is what the comment
-      by `headGroup` now says. `buildSpine` was checked at the same time and
-      already lofts one continuous tube, so it was left alone.
-- [x] `collapseStatics` merges every run of sibling meshes that draws the same
-      way once the body is finished; anything animated marks itself `solo()`
-      where it is built, and `addTier` merges each level tier's pieces into one
-      mesh.
-- [x] Verify: typecheck clean, `check:combat` 150/150, `sculpt-check` 24/24,
-      lint at its 4 known pre-existing errors. `anim.ts` (new) digests every
-      vertex in world space across six themes, six states, five time steps and
-      levels 3 and 5 — 192 snapshots, zero drift from the merge. Eight rendered
-      before/after views across six body plans agree pixel for pixel apart from
-      idle-bob and ring phase.
-
----
-
-# Movement pass — moves that flow out of each other
-
-Goal: motion that reads athletic instead of stiff, where one move hands its
-momentum to the next — a jump flows into a flip — and where how grounded a
-character is follows from its body: a winged serpent flips, a six-legged insect
-stays low.
-
-## Constraint that shapes everything
-**Every move's duration stays exactly as it is.** The `DURATION` table in
-`character.ts` is not touched — only *how* a body moves through its window, never
-how long the window is. `dash-check.py`'s timing assertions are the guard.
-
-## Done
-- [x] `tumble` channel: free, unbounded pitch for whole-body flips, kept separate
-      from the bounded `lean` weight-shift channel so a flip cannot fight a lean.
-- [x] Ballistic primitives: `ballistic`/`ballisticVelocity` (parabolic height plus
-      signed vertical speed) and `leap()`, which writes a whole jump — load,
-      lift, squash/stretch *derived from the vertical velocity*, optional full
-      rotations, dust on both the load and the landing.
-- [x] Agility from body shape: `SHAPE_AGILITY` per shape (lithe 1.0, serpentine
-      0.86, upright 0.68, orb 0.42, bulky 0.24, insectoid 0.14), plus a wing
-      bonus and a heavy penalty, resolved once per character and passed into
-      every curve.
-- [x] Curves **blend** on agility rather than switching: `celebrate`,
-      `dash_strike`, `ground_slam`, `dodge` and `counter_stance` scale their
-      grounded motion down and fade a `leap()` in as agility rises.
-- [x] Momentum carry across a combo seam: pose channels are crossfaded and the
-      outgoing velocity (finite difference at the seam) is carried in as a
-      decaying term, so the second half of a combo inherits the first half's
-      motion. Effect/progress channels (`shock`, `aura`, `dust`, `glowFlash`,
-      `glowDrain`) are `max`'d instead of crossfaded, so an expanding ring can
-      never run backwards.
-- [x] Residual pose carry on a state change: the live pose is snapshotted every
-      frame after the springs, and leaving any non-idle state hands that pose to
-      the residual so the next state starts from where the body actually was, not
-      from rest.
-- [x] Secondary motion: per-limb under-damped springs (`TRAIL_TUNING`) on arms,
-      head, wings, tail and spikes so parts overshoot and settle instead of
-      snapping; a separate slower spring makes the head lag the body's lean. Fixed
-      1/240s integration, capped step count, NaN/Infinity guarded.
-- [x] Consumers wired to the new state: head reads the trailing lean, leg stride
-      scales with `1 - airborne` and tucks in the air, the rig's pitch is
-      `lean + tumble`, and the ground ring shrinks and fades while airborne.
-- [x] Verify: typecheck, build, `dash-check.py` 26/26 three runs in a row,
-      `skin-shot.py`, `part-probe`, `head-probe`, `cost-probe`, `glow-probe`,
-      `proportion-probe`.
-- [x] Verify motion specifically: `motion-probe.ts` (agility gating is real —
-      serpent and cat peak at ~360 degrees of pitch on dodge/slam/celebrate,
-      heavy beast and six-leg insect stay at 90 and never leave the floor; cost
-      4.3-5.6 us a frame) and `motion-shot.py` (films a move as a strip of frames
-      on a pinned render clock — the flips, the airborne ring shrink, the squash
-      on landing and the monotonic slam ring all read correctly).
-
-## Combat realism pass
-Visual only, top to bottom: none of it decides an outcome. `blocked`, and for a
-real match whether there was contact at all, arrive from the server already
-settled — `registerImpact`'s `resolved` flag is what says so, and range is only
-allowed to shape a hit that was already decided, never to overrule it. Training
-has no server in the loop, so there a swing from too far away does find air.
-
-- [x] Contact on the blow, not on a timer: per-move strike frames
-      (`STRIKE_BEATS`/`strikeFrames`) fire the impact on the frame the move
-      actually lands, and `strikeWeight` gives every move a weight everything
-      below scales off.
-- [x] Hitstop: both bodies freeze, scaled by that weight and cut short on a
-      block. The freeze costs *movement* time, not a frame — a 45ms hold takes
-      45ms off the step even on a 250ms frame, so nothing teleports when it
-      lifts. The camera is the one thing that keeps moving through it.
-- [x] Directional reactions and knockback: the struck body reels away from the
-      bearing the blow arrived on, in its own local axes, and gives ground in
-      room space. A blow landed mid-dash gives less (`KNOCKBACK_DASH_SCALE`), or
-      the shove fights the lunge that threw it.
-- [x] Camera impact kick and shake, scaled to the hit and harder for a blow
-      taken than one dealt; direction deliberately arbitrary per hit, because
-      the camera is a held phone and not a body in the fight.
-- [x] Turning instead of snapping: facing eases onto the opponent over time, and
-      only while something is asking it to change — easing every frame would
-      have the body swivelling after the camera as the player pans.
-- [x] Opponent footwork: `advance`/`retreat`/`circle`/`hold`, committed to for a
-      beat at a time, bounded by a leash around the seat it was placed on, held
-      still while a strike is mid-flight, and walked back to that seat once the
-      exchange goes quiet.
-- [x] Blocked reads differently from landed: guard spark and a shove against
-      flinch and a flash, not just a different sound.
-- [x] Range matters: `REACH_M` per move, measured past the close guard with a
-      little forgiveness, and a whiff makes the body carry through and recover.
-      Reaches are floored at 0.38 m so no move can miss from the distance the
-      game itself seats a sparring pair at.
-- [x] Dash phase is wall clock less the freeze it lived through, and each frame
-      is charged for the *slice of the run it spanned* rather than for its own
-      length. Sampling the phase once a frame dropped whole lunges on a slow
-      renderer: the closing window is a few hundred ms and a frame can be
-      longer than that, so the dash covered no ground at all.
-- [x] Verify: typecheck clean; `dash-check.py` all 30 green twice in a row,
-      `move-check.py`, `fight-check.py`, `sfx-check.py` all green;
-      `authority-check.py` (new) drives the bodies out past every reach and
-      confirms a `resolved` hit still lands at any distance while an undecided
-      one whiffs out there and lands once it is in range.
-- [x] Checks that read a single instant were the flaky ones, not the product:
-      `move-check.py`'s hand-back to idle facing and `fight-check.py`'s re-face
-      and bot-attack reads now poll, and `move-check.py` asserts the opponent
-      stays on its leash and comes home rather than that it never moves.
-
-## Landing recovery by weight
-- [x] `heftFactor(agility)` — the other end of `airFactor`: ramps 1 to 0 as
-      agility falls below 0.6, so the bodies that never leave the floor are
-      exactly the ones that land hardest (insectoid 1.00, bulky 0.80, orb 0.40,
-      upright/serpentine/lithe 0.00).
-- [x] `leap()` takes a `heft` and spends it on the absorb, not on the clock: the
-      landing beat's window stretches by `0.18 * (1 + heft * 1.7)` and touchdown
-      is pulled *earlier* by `heft * 0.16` of the flight, so the extra
-      knee-bend time comes out of the air the body was going to spend anyway.
-      The move's own window is untouched and the beat's bias never moves with
-      heft — lowering bias drags crest and release together, which made a heavy
-      body release sooner on any landing already clamped to the window's end.
-- [x] Heft only goes to the landing that *ends* the movement. `celebrate`'s first
-      bounce is a rebound that becomes the next takeoff, so it stays at heft 0:
-      stretching it crumpled the body mid-air, and deepening both landings
-      stacked their squash into one channel and flattened the rig.
-- [x] Only the landing term deepens (`landing * (0.3 + heft * 0.12)`); the crouch
-      load does not, and dust scales on the landing alone. Constants came out of
-      a sweep, not a guess — anything more put summed squash past the shipped
-      envelope.
-- [x] Verify: `DURATION` byte-identical before and after; typecheck clean;
-      `dash-check.py`, `move-check.py`, `fight-check.py`, `sfx-check.py` all
-      green. `heft_model.py` ports `beat`/`ballistic`/`leap` to Python and
-      `heft-curve.py` asserts on it: heft 0 reproduces the shipped curve to
-      1e-12 and never moves touchdown, ground time and sink depth are monotonic
-      in heft, the absorb never runs past the move's end, nothing is still
-      absorbing once `celebrate`'s second jump is airborne, summed squash never
-      exceeds the shipped peak, and lift never goes through the floor.
-- [x] Verify visually: `heft-shot.py` films `celebrate` on a pinned clock for a
-      heavy insectoid against a light serpent — the heavy body touches down
-      ~0.79 phase, holds its deepest bend through 0.84 and rises to standing by
-      1.00, where the light body is already standing throughout. Note the four
-      agility-gated `leap()` sites (`air > 0.05`) never fire for a heavy body,
-      so `celebrate` is the only move where this reads.
-
-## Test note
-The sandbox renders at ~4fps in software (`fps-probe.py`), so any assertion that
-samples state at one fixed offset into a move is a coin flip. `dash-check.py`
-polls for extremes over a window instead, and `motion-shot.py` pins
-`performance.now` so it can request an exact phase of a move regardless of the
-real frame rate. Neither is a workaround for an animation bug — `chain-probe.py`
-confirmed the dashes fire correctly and throw nothing.
-
-## Open
-- [ ] Real on-device feel pass. Software rendering can show the poses but not
-      whether the springs feel right at 60fps on a phone.
-
-## Rules
-- Every existing avatar must still build (form comes from the modelId hash for
-  ones minted before block sets existed).
-- Move durations are fixed. Change the path through the window, never its length.
-- Existing move curves must not need retuning.
-- Perf: one shadow map, no post-processing chain, textures generated once and
-  shared, environment prefiltered once.
+## Verified in a real browser (scripts/verify-hype.py)
+- all 14 announcer calls and 3 crowd one-shots fetch, decode and play; bed glides on heat
+- cold-cache first call no longer swallowed (COLD_GRACE_MS retry)
+- reducer sequence: FIRST BLOOD -> COMBO x2 -> COUNTER -> FINISH IT -> K.O., heat 0 -> 0.94
+- hook end to end: FIGHT on active, banners self-clear on ttl, chain counter lapses after
+  the combo window, PERFECT on an untouched win, server commentary line renders
+- combat contexts: fallbacks cover 6 personalities x 9 contexts with no holes, schema accepts
+  the 3 new ones and rejects junk; live model lines verified through the gateway — combat lines
+  address the opponent, non-combat still address the pilot
+- routing verified in-browser: light blow -> silence, my crit -> taunt_landed, heavy blow on me
+  -> taunt_hurt, me under 20% health -> near_death, whiff -> silence

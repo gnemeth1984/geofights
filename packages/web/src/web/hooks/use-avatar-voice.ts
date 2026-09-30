@@ -36,6 +36,12 @@ const COOLDOWN_MS: Record<SpeechContext, number> = {
   victory: 10_000,
   hazard_warning: 30_000,
   idle: 75_000,
+  // Trash talk is the one thing a fight cannot have too little of, but the
+  // bubble is also the slowest thing on screen to read, so a blow every few
+  // seconds is as often as it is worth opening its mouth.
+  taunt_landed: 12_000,
+  taunt_hurt: 12_000,
+  near_death: 25_000,
 };
 
 /** Above `URGENT_FROM` a line skips the floor: safety and winning cannot wait. */
@@ -46,6 +52,10 @@ const PRIORITY: Record<SpeechContext, number> = {
   battle_start: 2,
   victory: 3,
   hazard_warning: 4,
+  taunt_landed: 2,
+  taunt_hurt: 2,
+  // About to lose the match: worth cutting in front of whatever else is queued.
+  near_death: 3,
 };
 const URGENT_FROM = 3;
 

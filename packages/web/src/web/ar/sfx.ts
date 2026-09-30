@@ -445,6 +445,24 @@ export function primeSfx() {
   audio();
 }
 
+/**
+ * The shared audio graph, for the other sound module in the app.
+ *
+ * The announcer and the crowd (`ar/hype.ts`) have to sit in the *same* context
+ * as the fight foley, for two reasons: a second `AudioContext` is a second
+ * thing the browser can refuse to start on a gesture, and ducking the crowd
+ * under a shout is only possible when both are nodes on one graph. Returns
+ * null before the first gesture, which is the caller's signal to stay quiet.
+ *
+ * Opens the graph as a side effect, exactly like a cue would.
+ */
+export function sfxGraph(): { ctx: AudioContext; out: GainNode } | null {
+  const ctx = audio();
+  if (!ctx || !master) return null;
+  if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+  return { ctx, out: master };
+}
+
 /** Silence every cue, or let them through again. Survives across modes. */
 export function setSfxMuted(next: boolean) {
   muted = next;

@@ -140,3 +140,93 @@
 @utility tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * The arcade callout over the fight — FIRST BLOOD, COMBO ×4, K.O.
+ *
+ * Hand-written rather than a `tw-animate-css` preset because the shape of the
+ * move is the whole effect: the word arrives too big and overshoots down to
+ * size in a tenth of a second (a cabinet's callout is a slam, not a fade in),
+ * holds while it is readable, then leaves upward and fast. The hold is the
+ * long middle of the keyframe list, so one `ttl` drives the whole thing and
+ * the component never has to schedule a second animation to take it away.
+ */
+@keyframes hype-slam {
+  0% {
+    opacity: 0;
+    transform: scale(2.4) translateY(0.06em);
+    filter: blur(6px);
+  }
+  8% {
+    opacity: 1;
+    transform: scale(0.94);
+    filter: blur(0);
+  }
+  14% {
+    transform: scale(1.04);
+  }
+  20% {
+    transform: scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08) translateY(-0.5em);
+  }
+}
+
+/* The shake under a knockout or a critical: short, off-centre, and over. */
+@keyframes hype-shock {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-3px, 1px, 0);
+  }
+  40% {
+    transform: translate3d(3px, -2px, 0);
+  }
+  60% {
+    transform: translate3d(-2px, -1px, 0);
+  }
+  80% {
+    transform: translate3d(2px, 1px, 0);
+  }
+}
+
+/* The combo counter's pulse each time the number goes up. */
+@keyframes hype-tick {
+  0% {
+    transform: scale(1.5);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@utility hype-slam {
+  animation: hype-slam var(--hype-ttl, 1.6s) cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+@utility hype-shock {
+  animation: hype-shock 0.32s ease-in-out both;
+}
+
+@utility hype-tick {
+  animation: hype-tick 0.24s ease-out both;
+}
+
+/* A player who asked the OS for less motion gets the callout without the slam. */
+@media (prefers-reduced-motion: reduce) {
+  .hype-slam,
+  .hype-shock,
+  .hype-tick {
+    animation: none;
+  }
+}
