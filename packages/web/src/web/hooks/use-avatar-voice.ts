@@ -34,6 +34,7 @@ const COOLDOWN_MS: Record<SpeechContext, number> = {
   booster_pickup: 6_000,
   battle_start: 20_000,
   victory: 10_000,
+  defeat: 10_000,
   hazard_warning: 30_000,
   idle: 75_000,
   // Trash talk is the one thing a fight cannot have too little of, but the
@@ -51,6 +52,9 @@ const PRIORITY: Record<SpeechContext, number> = {
   booster_pickup: 2,
   battle_start: 2,
   victory: 3,
+  // Same rank as winning: the result is the result, and the half of it that is
+  // a loss cannot be the half that gets dropped because a taunt was queued.
+  defeat: 3,
   hazard_warning: 4,
   taunt_landed: 2,
   taunt_hurt: 2,

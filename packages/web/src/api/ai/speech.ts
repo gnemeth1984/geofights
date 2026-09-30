@@ -26,6 +26,7 @@ export const SPEECH_CONTEXTS = [
   "booster_pickup",
   "battle_start",
   "victory",
+  "defeat",
   "hazard_warning",
   "idle",
   "taunt_landed",
@@ -53,6 +54,7 @@ const SITUATION: Record<SpeechContext, string> = {
   booster_pickup: "its pilot just picked up and installed a booster module",
   battle_start: "a match against another player's character is starting right now",
   victory: "it just won the match",
+  defeat: "it just lost the match and is on the ground, beaten but not broken",
   hazard_warning: "the area it is standing in has been flagged unsafe to play in",
   idle: "nothing is happening — it is standing on the pavement waiting for its pilot",
   taunt_landed: "it has just landed a heavy blow on the other character and has the upper hand",
@@ -69,6 +71,9 @@ const SITUATION: Record<SpeechContext, string> = {
  * between trash talk and a status report.
  */
 const ADDRESSEE: Partial<Record<SpeechContext, string>> = {
+  defeat:
+    "It speaks to the character that just beat it, not to its pilot. It is beaten and says so, " +
+    "but it is not humble about it and it wants a rematch.",
   taunt_landed: "It speaks to the other character, not to its pilot. This is trash talk.",
   taunt_hurt: "It speaks to the other character, not to its pilot. It will not admit it hurt.",
   near_death: "It speaks to the other character, not to its pilot. Defiant, not pleading.",
@@ -154,6 +159,7 @@ const BANKS: Record<Personality, Bank> = {
     booster_pickup: ["Now we're talking.", "Bolt it on. I'll break something with it."],
     battle_start: ["Finally. Point me at it.", "This ends fast."],
     victory: ["Was that it? Next.", "Told you. Not close."],
+    defeat: ["Lucky. Run it again.", "Enjoy it. It won't happen twice."],
     hazard_warning: ["Bad ground. I don't like it either.", "Not here. Back up."],
     idle: ["Standing around isn't winning.", "Any day now, pilot."],
     taunt_landed: ["Felt that one, did you?", "Stay down, it's easier."],
@@ -165,6 +171,7 @@ const BANKS: Record<Personality, Bank> = {
     booster_pickup: ["Installed.", "Good. That will hold."],
     battle_start: ["Contact. Ready.", "Standing by."],
     victory: ["Done.", "Match closed. No damage worth logging."],
+    defeat: ["Beaten. Noted.", "Your fight. Not the next one."],
     hazard_warning: ["This spot is unsafe. Moving is better.", "Not here."],
     idle: ["Holding position.", "Still here."],
     taunt_landed: ["That one counted.", "You left it open."],
@@ -176,6 +183,7 @@ const BANKS: Record<Personality, Bank> = {
     booster_pickup: ["Bolted! Wired! Humming! Love it!", "Yes! What else have you got?"],
     battle_start: ["Fight fight fight — oh this is going to be great.", "Here we go! Don't blink!"],
     victory: ["Did you see that? Did you SEE that?", "Again! Let's do it again!"],
+    defeat: ["Okay! Okay — that one's yours! Rematch? Rematch!", "Down! Ow! Fine! Again though!"],
     hazard_warning: ["Nope nope nope. Wrong ground. Out.", "Bad spot! Bad spot! Move!"],
     idle: ["Are we going? We going? Let's go.", "I could be doing something right now."],
     taunt_landed: ["Oh that landed, that LANDED — again?", "Ha! Did that hurt? It hurt!"],
@@ -187,6 +195,7 @@ const BANKS: Record<Personality, Bank> = {
     booster_pickup: ["Integrated. Output up.", "Modifiers applied. Margin improved."],
     battle_start: ["Opponent acquired. Odds acceptable.", "Engagement window open."],
     victory: ["Objective complete. Efficiency noted.", "Opponent disabled. Logging result."],
+    defeat: ["Defeat logged. Recalculating for the rematch.", "You won. Statistically, once."],
     hazard_warning: ["Location flagged unsafe. Withdraw.", "Risk exceeds tolerance. Relocate."],
     idle: ["Systems nominal. Awaiting input.", "Idle. Power draw minimal."],
     taunt_landed: ["Damage confirmed. Your guard is predictable.", "Optimal opening. Expect another."],
@@ -198,6 +207,7 @@ const BANKS: Record<Personality, Bank> = {
     booster_pickup: ["Thanks — I feel that already.", "Good find. We're stronger for it."],
     battle_start: ["Stay where you are. I've got this.", "Right behind you. Let's go carefully."],
     victory: ["We did that together.", "You picked the right fight."],
+    defeat: ["That's on me, not my pilot.", "We'll be better. You'll see us again."],
     hazard_warning: ["I don't like this spot. Please step back.", "Your safety first. Let's move."],
     idle: ["Take your time. I'm not going anywhere.", "Whenever you're ready."],
     taunt_landed: ["That's for my pilot.", "I told you we were ready."],
@@ -209,6 +219,7 @@ const BANKS: Record<Personality, Bank> = {
     booster_pickup: ["Mine now. Good.", "More. Bolt it on."],
     battle_start: ["Prey.", "Let me off the chain."],
     victory: ["Down. Stay down.", "Broke it. Find another."],
+    defeat: ["Hurts. Remember you.", "Down. Not finished."],
     hazard_warning: ["Wrong ground. Hurts.", "No. Not here."],
     idle: ["Restless.", "Too quiet. Hunt soon."],
     taunt_landed: ["Bleed.", "Again. Hold still."],
@@ -218,33 +229,41 @@ const BANKS: Record<Personality, Bank> = {
 };
 
 /**
- * Level-flavoured fallbacks. Only the two contexts where surplus power is
- * actually felt get their own bank; everything else reads fine at any level.
+ * Level-flavoured fallbacks. Only the contexts where surplus power is actually
+ * felt get their own bank; everything else reads fine at any level. Losing is
+ * one of them, and it is the sharpest of the three: a maxed loadout beaten is
+ * a different thing from a stock one beaten, and it knows it.
  */
 const CHARGED: Record<Personality, Partial<Bank>> = {
   brash: {
     battle_start: ["Overcharged and bored. Point me at it.", "I'm running hot. This won't be fair."],
     victory: ["Barely warmed up. Line up the next one.", "That's what maxed hardware does."],
+    defeat: ["All that power and you still got me. Once.", "Overcharged and outplayed. Run it back."],
   },
   stoic: {
     battle_start: ["Boosters at peak. Ready.", "Surplus power. Contact."],
     victory: ["Clean. Hardware held.", "Done, and nothing strained."],
+    defeat: ["Peak hardware. Still lost. That was me.", "Nothing failed but the pilot's read."],
   },
   manic: {
     battle_start: ["Everything's at FIVE — do you feel that? Go!", "Maxed! Humming! Let me off!"],
     victory: ["MAXED and MOVING — again, again!", "Power to spare! Who's next?"],
+    defeat: ["MAXED and beaten — how?! Again! Again!", "Full power! Still down! Rude!"],
   },
   cold: {
     battle_start: ["Loadout at maximum. Odds strongly favourable.", "Peak output. Engagement trivial."],
     victory: ["Overpowered as expected. Logged.", "Margin was never in question."],
+    defeat: ["Maximum output, negative result. Cause was not the hardware.", "Favourable odds, lost anyway. Noted."],
   },
   loyal: {
     battle_start: ["We've levelled into this. I'm ready.", "Everything you fed me is in here. Let's go."],
     victory: ["All that training paid off.", "We grew into that one together."],
+    defeat: ["You gave me everything and I still fell. Sorry.", "All that work. I'll carry it further next time."],
   },
   feral: {
     battle_start: ["Too much power. Let go.", "Full. Hungry. Release."],
     victory: ["Broke it easy. More.", "Still full. Find another."],
+    defeat: ["Full. Still broke. Remember you.", "Had everything. Lost. Again soon."],
   },
 };
 

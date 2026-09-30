@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Link } from "wouter";
 import {
+  ArrowDownWideNarrow,
   Dumbbell,
   Loader2,
   RotateCcw,
@@ -58,6 +59,7 @@ const CORE_ANIMATIONS: Array<{ state: AnimationState; label: string; icon: typeo
   { state: "attack_lurch", label: "Attack", icon: Swords },
   { state: "hit_react", label: "Take a hit", icon: Zap },
   { state: "celebrate", label: "Celebrate", icon: Sparkles },
+  { state: "slump", label: "Slump", icon: ArrowDownWideNarrow },
   { state: "idle", label: "Back to idle", icon: RotateCcw },
 ];
 

@@ -39,7 +39,7 @@ import {
  * move is a short curve evaluated per frame and written into a fixed set of
  * channels (lean, push, squash, wing flap, tail swing, …) that the body applies
  * however its own shape allows. That is what lets one move list — eight attacks,
- * six defences, five combos and the four core states — play believably on a
+ * six defences, five combos and the five core states — play believably on a
  * floating orb, a six-legged insect and a winged serpent alike.
  */
 
@@ -60,8 +60,8 @@ export type CharacterConfig = {
   form?: CreatureForm | null;
 };
 
-/** The four core states every creature always has. */
-export type CoreState = "idle" | "attack_lurch" | "hit_react" | "celebrate";
+/** The five core states every creature always has. */
+export type CoreState = "idle" | "attack_lurch" | "hit_react" | "celebrate" | "slump";
 
 /**
  * Everything a character can be told to play. Attacks, defences and combos come
@@ -549,6 +549,62 @@ const CORE_CURVES: Record<Exclude<CoreState, "idle">, MoveCurve> = {
     c.tailSwing = Math.sin(t * Math.PI * 3) * 0.7 * decay;
     c.glowFlash = arc(t) * 0.4;
     c.dust *= 0.5;
+  },
+  // The other end of `celebrate`, and deliberately built as its opposite: the
+  // dance is two bounces that get higher, this is one drop that never comes
+  // back. Nothing in here oscillates — a spring would read as the body
+  // recovering, and it is not recovering.
+  //
+  // The legs are the only fast thing in the move. They buckle almost at once,
+  // and everything else is the consequence of that arriving: the weight sinks
+  // onto them, the shoulders roll over, the head pulls in and the glow bleeds
+  // out. Held for most of the duration on `hold`'s long plateau rather than
+  // passed through on a `beat`, because a slump is a pose the body stays in.
+  //
+  // It still releases at the end, because a core state hands back to idle and
+  // there is nowhere else for it to go. That reads correctly anyway — the body
+  // picking itself up off the floor once the match is over is what happens
+  // next — and `carryPose` carries the sag out so it stands up over the
+  // residual rather than snapping upright on the frame the clock runs out.
+  slump: (t, c, i, a) => {
+    const heft = heftFactor(a);
+    // Knees folded on the way in, held, given up in the last fifth.
+    const fall = hold(t, 0.11, 0.8);
+    // The weight going down onto them: slower to arrive and slower to leave
+    // the more body there is to put on the floor.
+    const sink = sustain(t, 0.02, 1, 0.17 + heft * 0.09, 0.82);
+    // The one accent in the move — the instant the legs stop holding.
+    const give = beat(t, 0.03, 0.28, 0.4);
+    c.lift = -(sink * 0.1 + give * 0.035) * (0.6 + heft * 0.7) * i;
+    c.squash = (sink * 0.23 + give * 0.11) * i;
+    c.lean = (fall * 0.27 + give * 0.07) * i;
+    c.push = -sink * 0.04 * i;
+    // Weight off centre and left there: propped, not balanced. The jitter is
+    // on the give alone, so the body shakes as it drops and then goes still.
+    c.roll = sink * 0.085 + jitterNoise(t, 2) * give * 0.03;
+    c.sway = -sink * 0.028;
+    c.legFold = fall * 1.1;
+    c.legThrust = -fall * 0.22;
+    // Arms hanging: swung back off the shoulder with the elbows loose, which is
+    // the opposite of every guard in the table — a guard folds them across.
+    c.armSwing = -fall * 0.4;
+    c.armFold = fall * 0.28;
+    c.armAlternate = 0;
+    // Head pulled back into the shoulders rather than thrust at anything.
+    c.headPush = -fall * 0.28 * i;
+    // Wings half-dropped and part-closed: down, but not tucked into a guard.
+    c.wingFlap = -fall * 0.5;
+    c.wingWrap = sink * 0.22;
+    c.tailSwing = jitterNoise(t, 4) * give * 0.3;
+    c.tailReach = -fall * 0.1;
+    // Spines lying flat — the same negative flare `shell_guard` uses on its
+    // tuck, held instead of released.
+    c.spikeFlare = -fall * 0.32;
+    // The light going out is the whole point, so it is the one channel that
+    // does not scale with intensity: a maxed loadout loses just as completely.
+    c.glowDrain = Math.min(1, 0.12 + fall * 0.85);
+    c.pulse = -sink * 0.055 * i;
+    c.dust = give * 0.85;
   },
 };
 
@@ -1506,6 +1562,9 @@ const DURATION: Record<AnimationState, number> = {
   attack_lurch: 0.5,
   hit_react: 0.42,
   celebrate: 1.8,
+  // Longer than the dance. A body going down takes its time about it, and the
+  // loser's half of a result screen has the same beat to fill as the winner's.
+  slump: 2.4,
   swipe: 0.7,
   bite: 0.6,
   tail_whip: 0.8,
@@ -1582,6 +1641,10 @@ const STRIKE_BEATS: Record<
   hit_react: { from: 0, to: 0.5, bias: 4, weight: 0.3 },
   // Nothing connects in a victory dance. Weight 0 suppresses the whole layer.
   celebrate: { from: 0, to: 1, bias: 1, weight: 0 },
+  // Nor in a slump — the body hits the floor, but no blow is thrown, and a
+  // strike frame here would kick the camera and freeze the other body for a
+  // hit that does not exist.
+  slump: { from: 0, to: 1, bias: 1, weight: 0 },
 
   swipe: { from: 0.22, to: 0.74, bias: 0.45, weight: 0.44 },
   // `shut` — the jaw closing, not the lunge that carried it there.
@@ -1724,7 +1787,9 @@ export function strikeWeight(state: AnimationState): number {
  * *to* a creature reads as more urgent than what it is doing.
  */
 const PRIORITY: Record<AnimationState, number> = (() => {
-  const table = { idle: 0, attack_lurch: 1, hit_react: 2, celebrate: 4 } as Record<
+  // `slump` sits with `celebrate` at the top: the match is over, so a late
+  // damage event still arriving off the wire must not stomp the result.
+  const table = { idle: 0, attack_lurch: 1, hit_react: 2, celebrate: 4, slump: 4 } as Record<
     AnimationState,
     number
   >;

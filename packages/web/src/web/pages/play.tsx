@@ -975,15 +975,20 @@ function Play() {
         target.playCharacterAnimation("hit_react");
         playCue("hit");
       } else if (event.type === "match_finished") {
-        // The result call closes the arena down either way — a loss gets "You
-        // lose" and the crowd's disappointment, which is the half of a
-        // fighting game's grammar that a silent defeat screen is missing.
+        /*
+         * Both bodies answer the result, on both screens. Losing used to play
+         * nothing on the creature — a banner said "You lose" while the body
+         * that had just been knocked out stood there breathing. So the states
+         * are opposites dealt out the same way: the winner celebrates, the
+         * loser slumps, and the opponent across the ring takes the other one.
+         * The cue and the line follow: weight on the floor instead of a chirp,
+         * and a loser that asks for a rematch rather than conceding.
+         */
         const won = event.payload.winnerPlayerId === myPlayerId;
-        if (won) {
-          target.playCharacterAnimation("celebrate");
-          playCue("reaction");
-          voice.say("victory");
-        }
+        target.playCharacterAnimation(won ? "celebrate" : "slump");
+        target.playSparringAnimation(won ? "slump" : "celebrate");
+        playCue(won ? "reaction" : "slam");
+        voice.say(won ? "victory" : "defeat");
         closeHype(won);
       }
     }
