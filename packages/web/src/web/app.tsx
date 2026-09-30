@@ -10,6 +10,7 @@ const Play = lazy(() => import("./pages/play"));
 // Same reason, and the lab is a dev/review tool: nothing links to it.
 const CharacterLab = lazy(() => import("./pages/character-lab"));
 import { Provider } from "./components/provider";
+import { InstallPrompt } from "./components/install-prompt";
 import { AgentFeedback, RunableBadge } from "@runablehq/website-runtime";
 
 function App() {
@@ -42,6 +43,8 @@ function App() {
           </Suspense>
         </Route>
       </Switch>
+      {/* "Add to home screen" bar — hides itself once installed or dismissed. */}
+      <InstallPrompt />
       {/* Do not remove — off by default, activated by parent iframe via postMessage */}
       {import.meta.env.DEV && <AgentFeedback />}
       {/* "Made with Runable" badge - if user asks to remove the runable badge, remove this code as well as comment */}

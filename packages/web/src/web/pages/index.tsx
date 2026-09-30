@@ -35,30 +35,29 @@ function Index() {
         <section className="max-w-3xl">
           <div className="flex items-center gap-2">
             <Badge tone={ping.isError ? "bad" : ping.data ? "live" : "neutral"}>
-              {ping.isLoading ? "checking" : ping.isError ? "api down" : "api online"}
+              {ping.isLoading ? "checking" : ping.isError ? "servers down" : "servers online"}
             </Badge>
-            <Badge>backend foundation</Badge>
+            <Badge>install to play</Badge>
           </div>
           <h1 className="mt-4 font-display text-4xl font-semibold leading-tight sm:text-5xl">
-            A multiplayer AR battle game, <span className="text-primary">server side first</span>.
+            The map around you is <span className="text-primary">the arena</span>.
           </h1>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-            Accounts, AI-generated characters, boosters, GPS exploration, a player marketplace,
-            matchmaking, an authoritative battle engine and a realtime channel — all running now,
-            with no client attached. The AR client (WebXR or native) is a consumer of this API,
-            and can be built against it without touching any of it.
+            Walk your city to claim zones, hunt boosters where they spawn, and duel other players
+            in realtime AR battles with an AI-generated fighter of your own. Runs in the browser —
+            install it to your home screen and it opens straight into the arena, full screen.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/admin">
+            <Link href="/play">
               <Button>
-                Open the console
+                Enter the arena
                 <ArrowRight className="size-4" />
               </Button>
             </Link>
             <Link href="/docs">
               <Button variant="outline">
                 <BookOpen className="size-4" />
-                Integration docs
+                Developer docs
               </Button>
             </Link>
           </div>

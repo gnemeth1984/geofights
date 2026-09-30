@@ -1,0 +1,65 @@
+{
+  "id": "/",
+  "name": "GeoFights — Multiplayer AR Battles",
+  "short_name": "GeoFights",
+  "description": "Claim real-world zones, collect AI-generated fighters and boosters, and duel other players in realtime AR battles on the map around you.",
+  "start_url": "/play?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0e1722",
+  "theme_color": "#0e1722",
+  "categories": ["games", "entertainment"],
+  "lang": "en",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "GeoFights — multiplayer AR battles on your real-world map"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Enter the arena",
+      "short_name": "Play",
+      "url": "/play?source=pwa-shortcut",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Operator console",
+      "short_name": "Console",
+      "url": "/admin?source=pwa-shortcut"
+    }
+  ]
+}
