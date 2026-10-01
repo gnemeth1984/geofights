@@ -10,6 +10,7 @@ import {
   guard,
   matchSnapshot,
   readyState,
+  requireMatchMember,
   requireState,
   staminaOf,
   updatePosition,
@@ -63,10 +64,13 @@ export const battle = {
     streamPath: "/api/realtime/match/:matchId",
   })),
 
-  /** Authoritative state of every avatar in the match. */
-  state: base
+  /** Authoritative state of every avatar in the match. Lobby members only. */
+  state: playerProc
     .input(z.object({ matchId: z.string() }))
-    .handler(({ input }) => matchSnapshot(input.matchId)),
+    .handler(async ({ input, context }) => {
+      await requireMatchMember(input.matchId, context.player);
+      return matchSnapshot(input.matchId);
+    }),
 
   /** The caller's own combat state — health, cooldowns, abilities. */
   myState: playerProc
@@ -103,7 +107,10 @@ export const battle = {
       };
     }),
 
-  /** Report the device pose. Broadcast as `avatar_position`, never persisted. */
+  /**
+   * Report the device pose. Broadcast as `avatar_position` to the match only;
+   * the last pose is kept on `battle_state` until the match finishes.
+   */
   updatePosition: playerProc
     .input(
       z.object({
@@ -201,10 +208,13 @@ export const battle = {
    * Polling fallback for the event stream — same events, same ordering.
    * Pass the highest `seq` already seen.
    */
-  events: base
+  events: playerProc
     .input(z.object({ matchId: z.string(), afterSeq: z.number().int().min(0).default(0) }))
-    .handler(async ({ input }) => ({
-      events: await eventsSince(input.matchId, input.afterSeq),
-      liveSubscribers: subscriberCount(input.matchId),
-    })),
+    .handler(async ({ input, context }) => {
+      await requireMatchMember(input.matchId, context.player);
+      return {
+        events: await eventsSince(input.matchId, input.afterSeq),
+        liveSubscribers: subscriberCount(input.matchId),
+      };
+    }),
 };

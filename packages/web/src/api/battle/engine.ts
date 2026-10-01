@@ -169,6 +169,20 @@ export async function matchStates(matchId: string) {
 }
 
 /** Snapshot the whole match — the shape the AR client renders from. */
+/**
+ * Match reads carry where each fighter is standing, so only someone who was in
+ * the lobby (or an admin) may read them. Anyone else gets NOT_FOUND rather than
+ * a hint that the match exists.
+ */
+export async function requireMatchMember(matchId: string, player: { id: string; role: string }) {
+  if (player.role === "admin") return;
+  const [row] = await db
+    .select({ id: schema.matchPlayer.id })
+    .from(schema.matchPlayer)
+    .where(and(eq(schema.matchPlayer.matchId, matchId), eq(schema.matchPlayer.playerId, player.id)));
+  if (!row) throw new ORPCError("NOT_FOUND", { message: "Match not found" });
+}
+
 export async function matchSnapshot(matchId: string) {
   const [match] = await db.select().from(schema.match).where(eq(schema.match.id, matchId));
   if (!match) throw new ORPCError("NOT_FOUND", { message: "Match not found" });
@@ -234,7 +248,9 @@ export async function matchSnapshot(matchId: string) {
       kills: row.state.kills,
       damageDealt: row.state.damageDealt,
       damageTaken: row.state.damageTaken,
-      position: row.state.lat != null && row.state.lng != null
+      // Positions exist for the fight and only the fight: a lobby or a
+      // finished match never says where anyone was standing.
+      position: match.status === "active" && row.state.lat != null && row.state.lng != null
         ? { lat: row.state.lat, lng: row.state.lng, heading: row.state.heading, altitude: row.state.altitude }
         : null,
       abilities: JSON.parse(row.state.abilities) as AbilityDef[],
@@ -1269,6 +1285,11 @@ export async function finishMatch(input: { matchId: string; reason: string }) {
       summary,
     })
     .where(eq(schema.match.id, input.matchId));
+  // The fight is over, so is any reason to keep where each fighter stood.
+  await db
+    .update(schema.battleState)
+    .set({ lat: null, lng: null, heading: null, altitude: null })
+    .where(eq(schema.battleState.matchId, input.matchId));
 
   await emit(
     input.matchId,

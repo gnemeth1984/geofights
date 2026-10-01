@@ -276,7 +276,14 @@ if ! curl -s -m 3 "$SSE_BASE/api/health" >/dev/null 2>&1; then
     sleep 1
   done
 fi
-SSE=$(curl -s --max-time 4 --no-buffer -N "$SSE_BASE/api/realtime/match/$MID" 2>/dev/null | head -c 40000)
+# Match reads carry fighter positions: outsiders get nothing.
+ANON_SSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 4 "$SSE_BASE/api/realtime/match/$MID")
+if [ "$ANON_SSE" = "401" ]; then pass "sse refuses signed-out" "401"; else fail "sse refuses signed-out" "$ANON_SSE"; fi
+ANON_GET=$(curl -s -m 30 -X POST "$BASE/api/rpc/matches/get" -H 'content-type: application/json' \
+  -d "{\"json\":{\"matchId\":\"$MID\"}}")
+if printf '%s' "$ANON_GET" | grep -q '"players"'; then fail "matches.get refuses signed-out" "$ANON_GET"; else pass "matches.get refuses signed-out" "ok"; fi
+if printf '%s' "$SNAP" | grep -q '"position":{'; then fail "finished match hides positions" "$SNAP"; else pass "finished match hides positions" "ok"; fi
+SSE=$(curl -s -b "$A_JAR" --max-time 4 --no-buffer -N "$SSE_BASE/api/realtime/match/$MID" 2>/dev/null | head -c 40000)
 if printf '%s' "$SSE" | grep -q "^event:"; then
   pass "sse replays events" "$(printf '%s' "$SSE" | grep -c '^event:') frames"
 else

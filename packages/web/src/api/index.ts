@@ -1,6 +1,8 @@
 import type { RouterClient } from "@orpc/server";
 import { createApp } from "./__core/app";
 import { auth } from "./auth";
+import { requireMatchMember } from "./battle/engine";
+import { playerFromHeaders } from "./middleware/auth";
 import { matchEventStream } from "./realtime/stream";
 import { admin } from "./routes/admin";
 import { avatars } from "./routes/avatars";
@@ -53,7 +55,15 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
  * transport would carry — see realtime/bus.ts. Clients replay with
  * `Last-Event-ID` or `?afterSeq=`.
  */
-app.get("/api/realtime/match/:matchId", (c) => {
+app.get("/api/realtime/match/:matchId", async (c) => {
+  // Positions travel on this channel: lobby members (and admins) only.
+  const player = await playerFromHeaders(c.req.raw.headers);
+  if (!player) return c.json({ error: "unauthorized" }, 401);
+  try {
+    await requireMatchMember(c.req.param("matchId"), player);
+  } catch {
+    return c.json({ error: "not found" }, 404);
+  }
   const header = c.req.header("Last-Event-ID");
   const query = c.req.query("afterSeq");
   const afterSeq = Number(header ?? query ?? 0);

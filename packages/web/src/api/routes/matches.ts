@@ -13,7 +13,7 @@ import {
   quickMatch,
   startMatch,
 } from "../services/matches";
-import { matchSnapshot } from "../battle/engine";
+import { matchSnapshot, requireMatchMember } from "../battle/engine";
 import { selectableAvatars } from "../services/avatars";
 
 /**
@@ -38,10 +38,13 @@ export const matches = {
     .input(z.object({ limit: z.number().int().min(1).max(50).default(20) }).optional())
     .handler(({ input, context }) => myMatches(context.player.id, input?.limit ?? 20)),
 
-  /** Full lobby/battle snapshot — safe to poll, and the SSE stream's baseline. */
-  get: base
+  /** Full lobby/battle snapshot for lobby members — safe to poll, and the SSE stream's baseline. */
+  get: playerProc
     .input(z.object({ matchId: z.string() }))
-    .handler(({ input }) => matchSnapshot(input.matchId)),
+    .handler(async ({ input, context }) => {
+      await requireMatchMember(input.matchId, context.player);
+      return matchSnapshot(input.matchId);
+    }),
 
   create: playerProc
     .input(

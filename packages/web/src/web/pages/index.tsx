@@ -142,8 +142,8 @@ function Landing() {
             />
             <Rule
               icon={<Eye className="size-5" />}
-              title="Your exact spot stays private"
-              body="Location is used while you play. Other players never see your exact position."
+              title="Your location stays off the map"
+              body="Your location is checked by the game server and never shown on a map. Only the players in a fight with you see where you are, and only while the fight lasts."
             />
           </ul>
         </div>

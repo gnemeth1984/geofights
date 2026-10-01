@@ -26,6 +26,7 @@ import { createTeam, joinTeam, sendChat } from "../../src/api/services/teams";
 import { blockPlayer, reportPlayer } from "../../src/api/services/moderation";
 import { matchBlocker, requireCanJoin } from "../../src/api/services/match-gate";
 import { parkLocalHour } from "../../src/api/services/meetups";
+import { requireMatchMember } from "../../src/api/battle/engine";
 
 const TAG = `commcheck_${Date.now().toString(36)}`;
 let passed = 0;
@@ -172,6 +173,16 @@ async function partition() {
     ok = false;
   }
   check("same-tier player can join the match", ok);
+
+  // Match reads carry positions: only lobby members get them.
+  await rejects("a stranger cannot read a match", () => requireMatchMember(matchId, { id: adult, role: "player" }), /not found/i);
+  let member = true;
+  try {
+    await requireMatchMember(matchId, { id: teen, role: "player" });
+  } catch {
+    member = false;
+  }
+  check("a lobby member can read their match", member);
 
   await blockPlayer(teen2, teen);
   await rejects("a blocked pair cannot share a match", () => requireCanJoin(teen2, matchId), /not available/i);

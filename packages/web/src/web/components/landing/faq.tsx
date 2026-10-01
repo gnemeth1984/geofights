@@ -27,7 +27,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: "Is it safe for children?",
-    a: "Play only happens in reviewed areas, never on roads, railways or water, and the game pauses if you move faster than walking pace. Players under 16 need a parent or guardian to switch location on, and other players never see your exact position.",
+    a: "Play only happens in reviewed areas, never on roads, railways or water, and the game pauses if you move faster than walking pace. Players under 16 need a parent or guardian to switch location on, under-13s need a parent to confirm by email, and adults and under-18s are never matched or put in chat together. Your location is never shown on a map — only the players in a fight with you see where you are, and only while it lasts.",
   },
 ] as const;
 
