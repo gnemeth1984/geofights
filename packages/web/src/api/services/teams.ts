@@ -239,6 +239,15 @@ export async function sendChat(
   input: Channel & ({ kind: "preset"; presetId: string } | { kind: "text"; body: string }),
 ) {
   const access = requireCommunity(player);
+  // Permission first, so a refused message never counts against the rate limit.
+  if (input.kind === "text" && !access.freeText) {
+    throw new ORPCError("FORBIDDEN", {
+      message:
+        access.ageBand === "under13"
+          ? "Under 13, GeoFights chat is the ready-made phrases only."
+          : "Typed messages unlock after your first day.",
+    });
+  }
   const channel = await resolveChannel(player, input);
 
   const [recent] = await db
@@ -259,14 +268,6 @@ export async function sendChat(
     }
     body = presetText(input.presetId);
   } else {
-    if (!access.freeText) {
-      throw new ORPCError("FORBIDDEN", {
-        message:
-          access.ageBand === "under13"
-            ? "Under 13, GeoFights chat is the ready-made phrases only."
-            : "Typed messages unlock after your first day.",
-      });
-    }
     const verdict = filterMessage(input.body);
     if (verdict.blocked) {
       throw new ORPCError("BAD_REQUEST", { message: filterExplanation(verdict.reasons) });

@@ -29,9 +29,10 @@ export const matches = {
   /** Avatars the caller can bring into a match right now. */
   eligibleAvatars: playerProc.handler(({ context }) => selectableAvatars(context.player.id)),
 
-  open: base
+  /** Only lobbies the caller may join: same age tier, no blocks. */
+  open: playerProc
     .input(z.object({ zoneId: z.string().optional() }).optional())
-    .handler(({ input }) => openMatches(input?.zoneId)),
+    .handler(({ input, context }) => openMatches(context.player.id, input?.zoneId)),
 
   mine: playerProc
     .input(z.object({ limit: z.number().int().min(1).max(50).default(20) }).optional())

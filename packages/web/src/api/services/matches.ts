@@ -7,6 +7,7 @@ import { emit } from "../realtime/bus";
 import { finishMatch, matchSnapshot, seedBattleStates } from "../battle/engine";
 import { nearestZone } from "./nature";
 import { requireBattleGround } from "./safety";
+import { requireCanJoin, requireMatchEligible, visibleToViewer } from "./match-gate";
 
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 4;
@@ -21,6 +22,7 @@ export async function createMatch(input: {
 }) {
   const maxPlayers = clampPlayers(input.maxPlayers ?? MAX_PLAYERS);
   await assertAvatar(input.avatarId, input.hostPlayerId);
+  await requireMatchEligible(input.hostPlayerId);
   // Opening a lobby is a battle action: a training zone refuses it here rather
   // than letting the match exist and fail on the first attack.
   await requireBattleGround({
@@ -63,6 +65,8 @@ export async function joinMatch(input: { matchId: string; playerId: string; avat
   if (participants.length >= match.maxPlayers) {
     throw new ORPCError("BAD_REQUEST", { message: "Match is full" });
   }
+  // Same age tier as everyone seated, nobody blocked either way.
+  await requireCanJoin(input.playerId, input.matchId);
 
   await addParticipant(input.matchId, input.playerId, input.avatarId);
   return matchSnapshot(input.matchId);
@@ -235,6 +239,7 @@ export async function quickMatch(input: {
   lat?: number;
   lng?: number;
 }) {
+  await requireMatchEligible(input.playerId);
   await requireBattleGround({
     playerId: input.playerId,
     kind: "quick_match",
@@ -255,7 +260,11 @@ export async function quickMatch(input: {
     .orderBy(desc(schema.match.createdAt))
     .limit(10);
 
-  const joinable = open.find(
+  const allowed = await visibleToViewer(
+    input.playerId,
+    open.map((row) => ({ ...row, hostPlayerId: row.match.hostPlayerId })),
+  );
+  const joinable = allowed.find(
     (row) => Number(row.count) < row.match.maxPlayers && row.match.hostPlayerId !== input.playerId,
   );
   if (joinable) {
@@ -264,7 +273,7 @@ export async function quickMatch(input: {
   return createMatch({ hostPlayerId: input.playerId, avatarId: input.avatarId, zoneId });
 }
 
-export async function openMatches(zoneId?: string) {
+export async function openMatches(viewerId: string, zoneId?: string) {
   const rows = await db
     .select({
       match: schema.match,
@@ -278,7 +287,9 @@ export async function openMatches(zoneId?: string) {
     .where(zoneId ? and(eq(schema.match.status, "waiting"), eq(schema.match.zoneId, zoneId)) : eq(schema.match.status, "waiting"))
     .orderBy(desc(schema.match.createdAt))
     .limit(50);
-  return rows.map((row) => ({ ...row.match, hostUsername: row.hostUsername, zoneName: row.zoneName, players: Number(row.players) }));
+  const listed = rows.map((row) => ({ ...row.match, hostUsername: row.hostUsername, zoneName: row.zoneName, players: Number(row.players) }));
+  // Lobbies across the adult/under-18 line, or with a blocked host, are not shown.
+  return visibleToViewer(viewerId, listed);
 }
 
 export async function myMatches(playerId: string, limit = 20) {

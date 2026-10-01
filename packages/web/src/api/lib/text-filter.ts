@@ -62,11 +62,12 @@ const ADDRESS =
   /\b\d{1,5}\s+[\w\s]{2,24}\b(?:street|st\.?|road|rd\.?|avenue|ave\.?|lane|ln\.?|drive|dr\.?|close|court|utca|ut|tér)\b/gi;
 
 /**
- * Attempts to arrange a private meeting away from the game's own meet-ups.
- * Not redacted — flagged, because the message still needs a human to read it.
+ * Attempts to arrange a private meeting away from the game's own meet-ups, or
+ * to pull personal details / secrecy out of another player. Blocked outright —
+ * the only sanctioned way to meet is a public park meet-up inside the app.
  */
 const MEETING =
-  /\b(?:meet\s+me|come\s+(?:to|over)\s+my|my\s+(?:house|home|address)|alone|don'?t\s+tell|keep\s+(?:it|this)\s+secret|send\s+(?:me\s+)?a?\s*(?:pic|photo|selfie))\b/gi;
+  /\b(?:meet\s+(?:me|up)|come\s+(?:to|over)\s+(?:to\s+)?my|my\s+(?:house|home|address|place)|(?:come|be|you)\s+alone|are\s+you\s+alone|don'?t\s+tell|keep\s+(?:it|this)\s+(?:a\s+)?secret|our\s+(?:little\s+)?secret|send\s+(?:me\s+)?(?:a\s+)?(?:pic|photo|selfie)|where\s+do\s+you\s+live|what\s+school|which\s+school)/gi;
 
 /* --------------------------------------------------------------- word lists */
 
@@ -174,7 +175,10 @@ export function filterMessage(input: string, maxLength = 200): FilterVerdict {
   swap(PLATFORM, "handle");
   swap(ADDRESS, "address");
 
-  if (MEETING.test(text)) reasons.push("meeting");
+  if (MEETING.test(text)) {
+    MEETING.lastIndex = 0;
+    return { text: "", redacted: false, blocked: true, reasons: [...reasons, "meeting"] };
+  }
   MEETING.lastIndex = 0;
 
   for (const word of PROFANITY) {
@@ -214,6 +218,10 @@ export function filterName(input: string, maxLength = 24): FilterVerdict {
 /** One line for the moderation queue and for the error the player sees. */
 export function filterExplanation(reasons: FilterReason[]): string {
   if (reasons.includes("slur")) return "That language is not allowed here.";
+  if (reasons.includes("sexual")) return "That is not allowed in GeoFights.";
+  if (reasons.includes("meeting")) {
+    return "Not sent. Asking to meet privately, for photos, or where someone lives or goes to school is not allowed — use a park meet-up in the app instead.";
+  }
   if (reasons.includes("too_long")) return "That is too long.";
   if (reasons.includes("empty")) return "Nothing to send.";
   const personal = (["phone", "email", "url", "handle", "address"] as FilterReason[]).filter((r) =>
