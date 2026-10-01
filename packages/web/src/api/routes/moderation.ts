@@ -13,6 +13,7 @@ import {
   setModerationState,
   unblockPlayer,
 } from "../services/moderation";
+import { pendingConsents } from "../services/consent";
 
 /**
  * Report, block, and the moderation queue behind them.
@@ -68,6 +69,9 @@ export const moderation = {
     .handler(({ input }) => reportQueue(input?.status ?? "open", input?.limit ?? 100)),
 
   stats: adminProc.handler(() => moderationStats()),
+
+  /** Under-13 accounts waiting on a parent; carries the link to pass on by hand. */
+  pendingConsents: adminProc.handler(() => pendingConsents()),
 
   history: adminProc
     .input(z.object({ playerId: z.string() }))

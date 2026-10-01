@@ -98,6 +98,17 @@ async function signup() {
   check("home area is stored coarse (2 dp)", adult.homeLat === 53.35 && adult.homeLng === -6.26, `${adult.homeLat},${adult.homeLng}`);
   check("18+ lands in the adult tier", adult.ageTier === "adult");
   check("16–17 lands in the minor tier", (await load(await makePlayer("sixteen", "16to17"))).ageTier === "minor");
+  await rejects(
+    "an adult cannot re-sign-up as a minor",
+    () => completeSignupProfile({ playerId: adult.id, ageBand: "13to15", lat: 53, lng: -6, guardianConfirmed: true }),
+    /already set/i,
+  );
+  check("…and stays adult", (await load(adult.id)).ageTier === "adult");
+  const code = adult.inviteCode;
+  await completeSignupProfile({ playerId: adult.id, ageBand: "18plus", lat: 51.5, lng: -0.12, guardianConfirmed: false });
+  const moved = await load(adult.id);
+  check("same band can refresh the home area", moved.homeLat === 51.5 && moved.homeLng === -0.12);
+  check("…without changing the friend code", moved.inviteCode === code);
 }
 
 async function parentConsent() {

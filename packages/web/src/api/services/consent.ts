@@ -74,16 +74,32 @@ export async function completeSignupProfile(input: {
     });
   }
 
+  const [current] = await db.select().from(schema.player).where(eq(schema.player.id, input.playerId));
+  if (!current) throw new ORPCError("NOT_FOUND", { message: "Player not found" });
+  // The band is set once. Letting it change would let an adult account walk
+  // into the under-18 side (or the reverse) after the fact.
+  if (current.ageBand && current.ageBand !== band) {
+    throw new ORPCError("FORBIDDEN", {
+      message: "This account's age group is already set. Contact support to change it.",
+    });
+  }
+  const sameParent =
+    band === "under13" &&
+    Boolean(current.parentConsentAt) &&
+    current.parentEmail === input.parentEmail?.trim().toLowerCase();
+
   const [player] = await db
     .update(schema.player)
     .set({
       ageBand: band,
       ageTier: tier,
       parentEmail: band === "under13" ? input.parentEmail!.trim().toLowerCase() : null,
+      // A different parent email voids the old confirmation.
+      ...(band === "under13" && !sameParent ? { parentConsentAt: null } : {}),
       homeLat: coarseCoord(input.lat),
       homeLng: coarseCoord(input.lng),
       homeSetAt: new Date(),
-      inviteCode: await freshInviteCode(),
+      inviteCode: current.inviteCode ?? (await freshInviteCode()),
       updatedAt: new Date(),
     })
     .where(eq(schema.player.id, input.playerId))
@@ -92,7 +108,7 @@ export async function completeSignupProfile(input: {
   if (!player) throw new ORPCError("NOT_FOUND", { message: "Player not found" });
 
   let consent: Awaited<ReturnType<typeof requestParentConsent>> | null = null;
-  if (band === "under13") {
+  if (band === "under13" && !sameParent) {
     consent = await requestParentConsent(player.id, player.parentEmail!, player.username);
   }
   return { player, access: communityAccess(player), consent };
@@ -388,4 +404,33 @@ function escapeHtml(value: string) {
     (ch) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch,
   );
+}
+
+/**
+ * Pending parent-consent requests for the admin panel. While no mail provider
+ * is configured this is how the link reaches a parent: an operator passes it
+ * on by hand. The token is the parent's credential, so this is admin-only.
+ */
+export async function pendingConsents(limit = 100) {
+  const rows = await db
+    .select({
+      id: schema.parentConsent.id,
+      playerId: schema.parentConsent.playerId,
+      parentEmail: schema.parentConsent.parentEmail,
+      token: schema.parentConsent.token,
+      deliveredVia: schema.parentConsent.deliveredVia,
+      deliveryError: schema.parentConsent.deliveryError,
+      requestedAt: schema.parentConsent.requestedAt,
+      expiresAt: schema.parentConsent.expiresAt,
+      username: schema.player.username,
+    })
+    .from(schema.parentConsent)
+    .innerJoin(schema.player, eq(schema.player.id, schema.parentConsent.playerId))
+    .where(eq(schema.parentConsent.status, "pending"))
+    .orderBy(desc(schema.parentConsent.requestedAt))
+    .limit(limit);
+  return rows.map(({ token, ...row }) => ({
+    ...row,
+    link: `${siteUrl()}/parent-consent?token=${token}`,
+  }));
 }
