@@ -5,6 +5,7 @@ import {
   BookOpen,
   Clock,
   Coins,
+  Flag,
   FlaskConical,
   LogOut,
   MapPin,
@@ -27,6 +28,7 @@ import { MatchesTab } from "@/components/admin/matches-tab";
 import { OverviewTab } from "@/components/admin/overview-tab";
 import { PlayersTab } from "@/components/admin/players-tab";
 import { SafetyTab } from "@/components/admin/safety-tab";
+import { ModerationTab } from "@/components/admin/moderation-tab";
 import { ZonesTab } from "@/components/admin/zones-tab";
 import { Loading } from "@/components/admin/state";
 import { useMe, useSession, useSignOut } from "@/queries/session";
@@ -38,6 +40,7 @@ const TABS = [
   { id: "players", label: "Players", icon: Users, render: () => <PlayersTab /> },
   { id: "zones", label: "Zones & spawns", icon: MapPin, render: () => <ZonesTab /> },
   { id: "safety", label: "Safety", icon: ShieldAlert, render: () => <SafetyTab /> },
+  { id: "moderation", label: "Moderation", icon: Flag, render: () => <ModerationTab /> },
   { id: "matches", label: "Matches", icon: Swords, render: () => <MatchesTab /> },
   { id: "market", label: "Marketplace", icon: Store, render: () => <MarketTab /> },
   { id: "economy", label: "Economy", icon: Coins, render: () => <EconomyTab /> },

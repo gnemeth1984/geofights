@@ -30,7 +30,8 @@ import { TrainingMode, type TrainingHit } from "@/components/play/training-mode"
 import { MoveStick } from "@/components/play/move-stick";
 import { CollectSheet, type SpawnTarget } from "@/components/play/collect-sheet";
 import { EnvNotice } from "@/components/play/env-notice";
-import { ConsentGate } from "@/components/play/consent-gate";
+import { SignupGates } from "@/components/community/signup-gates";
+import { CommunityPanel } from "@/components/community/community-panel";
 import {
   SafetyBlock,
   SafetyStrip,
@@ -1933,6 +1934,7 @@ function Play() {
                     error={boosterNote}
                   />
                   <MarketPanel myPlayerId={myPlayerId ?? null} currency={profile.data?.currency ?? null} />
+                  <CommunityPanel zone={zone.data ?? null} myPlayerId={myPlayerId} />
                   <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border pt-2 font-mono text-[11px] text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
                       <MapPin className="size-3" />
@@ -1985,11 +1987,7 @@ function Play() {
        * visitor left the account form rendered but unclickable — which is what
        * "I made an account and cannot log in" actually was.
        */}
-      {signedIn && geo.status === "unasked" && (
-        <div className="absolute inset-0 z-40 overflow-y-auto bg-background/96 backdrop-blur">
-          <ConsentGate rules={safetyConfig.data?.rules} />
-        </div>
-      )}
+      <SignupGates signedIn={signedIn} geoUnasked={geo.status === "unasked"} rules={safetyConfig.data?.rules} />
     </div>
   );
 }

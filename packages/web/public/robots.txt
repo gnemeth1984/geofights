@@ -5,6 +5,8 @@ Disallow: /admin
 Disallow: /dev
 Disallow: /docs
 Disallow: /character-lab
+Disallow: /parent-consent
+Disallow: /add-friend
 Disallow: /api/
 
 Sitemap: https://geofights.com/sitemap.xml

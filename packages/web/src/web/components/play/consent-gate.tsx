@@ -3,7 +3,7 @@ import { MapPin, ShieldCheck, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
-import { AGE_BANDS, GUARDIAN_REQUIRED, type AgeBand } from "@/lib/geo";
+import { AGE_BANDS, AGE_BAND_LABEL as BAND_LABEL, GUARDIAN_REQUIRED, type AgeBand } from "@/lib/geo";
 import { useGeo } from "@/hooks/use-geo";
 import { EnvNotice } from "@/components/play/env-notice";
 import { primeSfx } from "@/ar/sfx";
@@ -18,15 +18,11 @@ import { primeSfx } from "@/ar/sfx";
  * AR character preview, just nothing that needs to know where they are.
  */
 
-const BAND_LABEL: Record<AgeBand, string> = {
-  under13: "Under 13",
-  "13to15": "13 to 15",
-  "16plus": "16 or older",
-};
-
-export function ConsentGate({ rules }: { rules?: string[] }) {
+export function ConsentGate({ rules, lockedBand }: { rules?: string[]; lockedBand?: AgeBand | null }) {
   const geo = useGeo();
-  const [band, setBand] = React.useState<AgeBand | null>(null);
+  // A signed-in player's band is on their account; this device only asks again
+  // for the location permission, not for a different age.
+  const [band, setBand] = React.useState<AgeBand | null>(lockedBand ?? null);
   const [guardian, setGuardian] = React.useState(false);
 
   const needsGuardian = band ? GUARDIAN_REQUIRED.includes(band) : false;
@@ -62,6 +58,7 @@ export function ConsentGate({ rules }: { rules?: string[] }) {
                   key={value}
                   size="sm"
                   variant={band === value ? "default" : "outline"}
+                  disabled={Boolean(lockedBand) && lockedBand !== value}
                   onClick={() => {
                     setBand(value);
                     setGuardian(false);

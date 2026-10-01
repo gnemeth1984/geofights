@@ -4,11 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/format";
 import { useSignIn, useSignUp } from "@/queries/session";
+import { useCompleteSignup } from "@/queries/community";
+import { useGeo } from "@/hooks/use-geo";
+import { AgeLocationFields, useAgeLocation } from "@/components/play/age-location-step";
 
 /**
- * Account step. The AR scene runs before this — a player can look at their
- * character and walk to a booster marker unauthenticated — but boosters, avatars
- * and matches are owned by an account, so combat needs one.
+ * Account step. Signing in is email + password. Creating an account also
+ * needs an age band and a live location fix *before* the account exists —
+ * the Create button stays disabled until both are in, so there is no such
+ * thing as a GeoFights account without them. (An account that somehow ends
+ * up without them is caught by the finish-sign-up gate on the play screen.)
  */
 export function SignInCard({ initialMode = "in" }: { initialMode?: "in" | "up" } = {}) {
   const [mode, setMode] = React.useState<"in" | "up">(initialMode);
@@ -17,27 +22,44 @@ export function SignInCard({ initialMode = "in" }: { initialMode?: "in" | "up" }
   const [name, setName] = React.useState("");
   const signIn = useSignIn();
   const signUp = useSignUp();
+  const completeSignup = useCompleteSignup();
+  const geo = useGeo();
+  const profile = useAgeLocation();
 
-  const pending = signIn.isPending || signUp.isPending;
-  const error = signIn.error ?? signUp.error;
+  const pending = signIn.isPending || signUp.isPending || completeSignup.isPending;
+  const error = signIn.error ?? signUp.error ?? completeSignup.error;
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (mode === "in") signIn.mutate({ email, password });
-    else signUp.mutate({ email, password, name: name || email.split("@")[0]! });
+    if (mode === "in") {
+      signIn.mutate({ email, password });
+      return;
+    }
+    const payload = profile.payload();
+    if (!profile.ready || !payload) return;
+    try {
+      await signUp.mutateAsync({ email, password, name: name || email.split("@")[0]! });
+      await completeSignup.mutateAsync(payload);
+      // The same answer also unlocks GPS on this device, so the play screen
+      // does not ask the age question a second time.
+      geo.grant({ ageBand: payload.ageBand, guardianConfirmed: payload.guardianConfirmed });
+    } catch {
+      /* surfaced through the mutation errors */
+    }
   };
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <form onSubmit={(event) => void submit(event)} className="space-y-3">
       <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {mode === "in" ? "Sign in to fight" : "Create a player"}
       </div>
       {mode === "up" && (
         <Input
-          placeholder="Player name"
+          placeholder="Player name (no real names)"
           value={name}
           onChange={(event) => setName(event.target.value)}
           autoComplete="nickname"
+          maxLength={24}
         />
       )}
       <Input
@@ -56,9 +78,10 @@ export function SignInCard({ initialMode = "in" }: { initialMode?: "in" | "up" }
         autoComplete={mode === "in" ? "current-password" : "new-password"}
         required
       />
+      {mode === "up" && <AgeLocationFields form={profile} />}
       {error && <div className="text-xs text-destructive">{errorMessage(error)}</div>}
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" size="sm" disabled={pending}>
+        <Button type="submit" size="sm" disabled={pending || (mode === "up" && !profile.ready)}>
           {mode === "in" ? <LogIn className="size-4" /> : <UserPlus className="size-4" />}
           {pending ? "Working…" : mode === "in" ? "Sign in" : "Create account"}
         </Button>

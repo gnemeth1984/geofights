@@ -12,8 +12,12 @@
  * just documented.
  *
  * Consent model (COPPA / GDPR-K, strictest reading):
- *   - under 13 and 13–15 both require a guardian to be present and confirm.
+ *   - under 13 and 13–15 both require a guardian to be present and confirm;
+ *     under 13 additionally needs a parent to confirm by email (server-side).
  *   - 16+ can consent for themselves.
+ *   - The bands are the same four the server stores (`schema.AGE_BANDS`), so
+ *     the band picked here is the one that sets the community tier: under 18
+ *     and 18+ are kept apart everywhere.
  *   - Consent is versioned; bumping `CONSENT_VERSION` re-asks everyone.
  *   - Declining is a first-class state, not an error: the client stays usable
  *     in "no-GPS" mode and simply never asks the browser for a fix.
@@ -24,10 +28,18 @@
  */
 
 const CONSENT_KEY = "geofights.geo.consent";
-export const CONSENT_VERSION = 1;
+// v2: bands split at 18 for the community tiers — everyone is asked again.
+export const CONSENT_VERSION = 2;
 
-export const AGE_BANDS = ["under13", "13to15", "16plus"] as const;
+export const AGE_BANDS = ["under13", "13to15", "16to17", "18plus"] as const;
 export type AgeBand = (typeof AGE_BANDS)[number];
+
+export const AGE_BAND_LABEL: Record<AgeBand, string> = {
+  under13: "Under 13",
+  "13to15": "13 to 15",
+  "16to17": "16 or 17",
+  "18plus": "18 or older",
+};
 
 /** Bands that may not consent for themselves. */
 export const GUARDIAN_REQUIRED: readonly AgeBand[] = ["under13", "13to15"];
@@ -122,6 +134,49 @@ export type GeoWatchHandlers = {
   onFix: (fix: GeoFix) => void;
   onError: (error: GeoWatchError) => void;
 };
+
+/**
+ * One position, once — the sign-up step. An account cannot be created without
+ * it, so this resolves only with a real fix and rejects with a readable reason
+ * otherwise. Same consent rule as the watch: a minor band needs the guardian.
+ */
+export function getOneFix(input: { ageBand: AgeBand; guardianConfirmed: boolean }): Promise<GeoFix> {
+  return new Promise((resolve, reject) => {
+    if (GUARDIAN_REQUIRED.includes(input.ageBand) && !input.guardianConfirmed) {
+      reject(new Error("A parent or guardian has to confirm first."));
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("This device has no location sensor."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const c = position.coords;
+        resolve({
+          lat: c.latitude,
+          lng: c.longitude,
+          accuracyM: c.accuracy ?? 9999,
+          altitude: c.altitude ?? null,
+          speedMps: null,
+          heading: null,
+          at: position.timestamp || Date.now(),
+        });
+      },
+      (error) =>
+        reject(
+          new Error(
+            error.code === error.PERMISSION_DENIED
+              ? "Location was blocked. Allow it in the browser to create an account."
+              : error.code === error.TIMEOUT
+                ? "Could not get a position in time. Try again, ideally outdoors."
+                : "Could not get a position. Try again.",
+          ),
+        ),
+      { enableHighAccuracy: false, maximumAge: 60_000, timeout: 20_000 },
+    );
+  });
+}
 
 /**
  * The single call into the platform geolocation API.

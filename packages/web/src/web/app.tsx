@@ -4,6 +4,8 @@ import Landing from "./pages/index";
 import DevOverview from "./pages/dev";
 import Admin from "./pages/admin";
 import Docs from "./pages/docs";
+import ParentConsent from "./pages/parent-consent";
+import AddFriend from "./pages/add-friend";
 
 // The AR client pulls in Three.js — a third of the bundle on its own. Split so
 // the console and the landing page do not pay for a renderer they never use.
@@ -26,6 +28,9 @@ function App() {
         <Route path="/dev" component={DevOverview} />
         <Route path="/admin" component={Admin} />
         <Route path="/docs" component={Docs} />
+        {/* Landing pages for the parent-consent email and a scanned friend QR. noindex. */}
+        <Route path="/parent-consent" component={ParentConsent} />
+        <Route path="/add-friend" component={AddFriend} />
         <Route path="/play">
           <Suspense
             fallback={

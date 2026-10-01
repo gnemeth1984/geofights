@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { HudPlayer } from "@/components/play/battle-hud";
+import { SafetyActions } from "@/components/community/safety-actions";
 
 /**
  * Post-match result.
@@ -103,6 +104,9 @@ export function MatchResult({
             <span className="text-muted-foreground">
               {player.kills} {player.kills === 1 ? "kill" : "kills"}
             </span>
+            {myPlayerId && player.playerId !== myPlayerId && (
+              <SafetyActions playerId={player.playerId} username={player.username} context="match" />
+            )}
           </div>
         ))}
       </div>

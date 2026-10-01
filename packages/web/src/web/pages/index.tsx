@@ -69,8 +69,9 @@ function Landing() {
             >
               <SignInCard initialMode="up" />
               <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
-                After you sign in, the game asks for your location — that's how it finds the play
-                areas around you. Players under 16 need a parent or guardian to switch it on.
+                Creating a player needs your age band and your location — that's how the game finds
+                the play areas near you. Under 16, a parent or guardian has to be there; under 13, a
+                parent also confirms by email. Adults and under-18s never play or chat together.
               </p>
             </div>
           </div>
