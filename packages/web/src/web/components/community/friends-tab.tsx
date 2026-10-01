@@ -1,5 +1,4 @@
 import * as React from "react";
-import QRCode from "qrcode";
 import { Check, Copy, MessageCircle, Share2, UserMinus, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +11,7 @@ import {
   type ChatChannel,
 } from "@/queries/community";
 import { SafetyActions } from "./safety-actions";
-import { ErrorLine, Muted, PENDING_INVITE_KEY, Row, SectionLabel, Spinner } from "./shared";
+import { ConfirmButton, ErrorLine, Muted, PENDING_INVITE_KEY, Row, SectionLabel, Spinner, shortAgo } from "./shared";
 
 /**
  * Friends, by code only. There is no search box and no "people near you":
@@ -67,13 +66,16 @@ export function FriendsTab({ onChat }: { onChat: (channel: ChatChannel, title: s
       <div className="space-y-1.5">
         <SectionLabel>Friends</SectionLabel>
         {friends.isLoading && <Spinner />}
-        {data && data.friends.length === 0 && <Muted>No friends yet. Swap codes with someone at the park.</Muted>}
+        {data && data.friends.length === 0 && <div className="rounded-md border border-dashed border-border p-3 text-center text-[11px] leading-relaxed text-muted-foreground">
+            No friends yet. Next time you're at the park with someone you know, scan each other's QR.
+          </div>}
         {data?.friends.map((f) => (
           <Row key={f.friendLinkId}>
             <span className="min-w-0">
               <span className="block truncate font-medium">{f.username}</span>
               <span className="font-mono text-[10px] text-muted-foreground">
                 lvl {f.level} · {f.wins} wins
+                {f.lastSeenAt && <> · {onlineLabel(f.lastSeenAt)}</>}
               </span>
             </span>
             <span className="ml-auto inline-flex items-center gap-1">
@@ -85,15 +87,13 @@ export function FriendsTab({ onChat }: { onChat: (channel: ChatChannel, title: s
               >
                 <MessageCircle className="size-3.5" />
               </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`Remove ${f.username}`}
+              <ConfirmButton
+                ariaLabel={`Remove ${f.username} as a friend`}
+                confirmLabel="Remove?"
+                icon={<UserMinus className="size-3.5" />}
                 disabled={remove.isPending}
-                onClick={() => remove.mutate({ playerId: f.playerId })}
-              >
-                <UserMinus className="size-3.5" />
-              </Button>
+                onConfirm={() => remove.mutate({ playerId: f.playerId })}
+              />
               <SafetyActions playerId={f.playerId} username={f.username} context="profile" />
             </span>
           </Row>
@@ -116,6 +116,11 @@ export function FriendsTab({ onChat }: { onChat: (channel: ChatChannel, title: s
   );
 }
 
+function onlineLabel(at: string | Date) {
+  const ago = shortAgo(at);
+  return ago === "now" || (ago.endsWith("m") && Number.parseInt(ago, 10) < 10) ? "online" : `seen ${ago} ago`;
+}
+
 function InviteCard() {
   const invite = useMyInvite(true);
   const [qr, setQr] = React.useState<string | null>(null);
@@ -125,7 +130,12 @@ function InviteCard() {
   React.useEffect(() => {
     if (!url) return;
     let live = true;
-    QRCode.toDataURL(url, { margin: 1, width: 320, color: { dark: "#0b0f0c", light: "#ffffff" } })
+    // Loaded on demand — the play bundle does not carry a QR encoder for a
+    // panel most sessions never open.
+    import("qrcode")
+      .then(({ default: QRCode }) =>
+        QRCode.toDataURL(url, { margin: 1, width: 320, color: { dark: "#0b0f0c", light: "#ffffff" } }),
+      )
       .then((data) => live && setQr(data))
       .catch(() => live && setQr(null));
     return () => {

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCreateTeam, useJoinTeam, useLeaveTeam, useMyTeam, type ChatChannel } from "@/queries/community";
 import { SafetyActions } from "./safety-actions";
-import { ErrorLine, Muted, Row, SectionLabel, Spinner } from "./shared";
+import { ConfirmButton, ErrorLine, Muted, Row, SectionLabel, Spinner } from "./shared";
 
 /**
  * One team per player, joined by code. Teams are single-tier: a team made by
@@ -45,9 +45,14 @@ export function TeamTab({
         <Button size="sm" onClick={() => onChat({ scope: "team", channelId: t.id }, `${t.name} team`)}>
           <MessageCircle className="size-3.5" /> Team chat
         </Button>
-        <Button size="sm" variant="outline" disabled={leave.isPending} onClick={() => leave.mutate({})}>
-          <LogOut className="size-3.5" /> Leave
-        </Button>
+        <ConfirmButton
+          label="Leave"
+          confirmLabel={t.isOwner && t.memberCount > 1 ? "Leave? Ownership passes on" : "Leave team?"}
+          ariaLabel="Leave team"
+          icon={<LogOut className="size-3.5" />}
+          disabled={leave.isPending}
+          onConfirm={() => leave.mutate({})}
+        />
       </div>
 
       <div className="space-y-1.5">

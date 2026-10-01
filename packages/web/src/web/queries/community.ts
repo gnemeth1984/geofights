@@ -41,8 +41,8 @@ export function useResendParentConsent() {
 
 /* ------------------------------------------------------------------ friends */
 
-export function useFriends(enabled: boolean) {
-  return useQuery(orpc.community.friends.list.queryOptions({ enabled, refetchInterval: 20_000 }));
+export function useFriends(enabled: boolean, refetchInterval = 20_000) {
+  return useQuery(orpc.community.friends.list.queryOptions({ enabled, refetchInterval }));
 }
 export function useMyInvite(enabled: boolean) {
   return useQuery(orpc.community.friends.invite.queryOptions({ enabled, staleTime: 5 * 60_000 }));

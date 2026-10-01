@@ -37,9 +37,24 @@ export const MEETUP_EARLIEST_HOUR = 8;
 export const MEETUP_LATEST_HOUR = 20;
 export const PARK_BOARD_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * The hour at the park, not on the server. The server runs in UTC, so
+ * `getHours()` would put the 08:00–20:00 window an hour or more off in
+ * Ireland in summer. The host's device offset is used when it is plausible for
+ * the park's longitude (within 3h of solar time); otherwise the solar estimate
+ * is used, so a spoofed offset cannot slide a meet-up into the night.
+ */
+export function parkLocalHour(at: Date, parkLng: number, tzOffsetMinutes?: number) {
+  const solar = -Math.round(parkLng / 15) * 60;
+  const offset =
+    tzOffsetMinutes !== undefined && Math.abs(tzOffsetMinutes - solar) <= 180 ? tzOffsetMinutes : solar;
+  const local = new Date(at.getTime() - offset * 60_000);
+  return local.getUTCHours();
+}
+
 export async function createMeetup(
   player: Player,
-  input: { zoneId: string; title: string; startsAt: Date; capacity?: number },
+  input: { zoneId: string; title: string; startsAt: Date; capacity?: number; tzOffsetMinutes?: number },
 ) {
   const access = requireCommunity(player);
   if (!access.host) {
@@ -70,7 +85,7 @@ export async function createMeetup(
   if (when - Date.now() > MEETUP_MAX_AHEAD_MS) {
     throw new ORPCError("BAD_REQUEST", { message: "Meet-ups can be set up two weeks ahead." });
   }
-  const hour = input.startsAt.getHours();
+  const hour = parkLocalHour(input.startsAt, zone.centerLng, input.tzOffsetMinutes);
   if (hour < MEETUP_EARLIEST_HOUR || hour >= MEETUP_LATEST_HOUR) {
     throw new ORPCError("BAD_REQUEST", {
       message: `Meet-ups run between ${MEETUP_EARLIEST_HOUR}:00 and ${MEETUP_LATEST_HOUR}:00.`,

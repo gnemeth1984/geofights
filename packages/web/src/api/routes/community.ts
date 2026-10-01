@@ -179,6 +179,8 @@ export const community = {
           /** ISO string from the client's own clock. */
           startsAt: z.string(),
           capacity: z.number().int().min(2).max(40).optional(),
+          /** `Date#getTimezoneOffset()` on the host's device, for the 08:00–20:00 rule. */
+          tzOffsetMinutes: z.number().int().min(-840).max(840).optional(),
         }),
       )
       .handler(({ input, context }) =>
@@ -187,6 +189,7 @@ export const community = {
           title: input.title,
           startsAt: new Date(input.startsAt),
           capacity: input.capacity,
+          tzOffsetMinutes: input.tzOffsetMinutes,
         }),
       ),
 

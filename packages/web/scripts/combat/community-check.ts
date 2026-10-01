@@ -25,6 +25,7 @@ import { friendList, redeemInviteCode, respondToRequest } from "../../src/api/se
 import { createTeam, joinTeam, sendChat } from "../../src/api/services/teams";
 import { blockPlayer, reportPlayer } from "../../src/api/services/moderation";
 import { matchBlocker, requireCanJoin } from "../../src/api/services/match-gate";
+import { parkLocalHour } from "../../src/api/services/meetups";
 
 const TAG = `commcheck_${Date.now().toString(36)}`;
 let passed = 0;
@@ -279,7 +280,17 @@ async function cleanup() {
   await db.delete(schema.player).where(inArray(schema.player.id, p));
 }
 
+function meetupHours() {
+  // 19:30 UTC in Dublin summer is 20:30 local: device offset -60 must be honoured.
+  const at = new Date("2026-07-04T19:30:00Z");
+  check("park hour: Dublin, no hint = solar (19)", parkLocalHour(at, -6.26) === 19);
+  check("park hour: Dublin, IST hint = 20", parkLocalHour(at, -6.26, -60) === 20);
+  check("park hour: absurd hint ignored", parkLocalHour(at, -6.26, 600) === 19);
+  check("park hour: Tokyo solar", parkLocalHour(at, 139.7) === 4);
+}
+
 try {
+  meetupHours();
   await signup();
   await parentConsent();
   await partition();

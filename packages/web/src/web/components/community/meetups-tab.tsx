@@ -127,7 +127,12 @@ function HostForm({ zone }: { zone: Zone }) {
     }
     setLocal(null);
     create.mutate(
-      { zoneId: zone.id, title: title.trim(), startsAt: start.toISOString() },
+      {
+        zoneId: zone.id,
+        title: title.trim(),
+        startsAt: start.toISOString(),
+        tzOffsetMinutes: start.getTimezoneOffset(),
+      },
       { onSuccess: () => setTitle("") },
     );
   };

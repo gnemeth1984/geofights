@@ -3,17 +3,17 @@ import { ChevronDown, HeartHandshake, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useCommunityAccess, useResendParentConsent, type ChatChannel } from "@/queries/community";
+import { useCommunityAccess, useFriends, useResendParentConsent, type ChatChannel } from "@/queries/community";
 import { ChatTab, type OpenChannel } from "./chat-tab";
 import { FriendsTab } from "./friends-tab";
 import { MeetupsTab } from "./meetups-tab";
 import { SafetyTab } from "./safety-tab";
 import { TeamTab } from "./team-tab";
-import { ErrorLine, Muted, PENDING_INVITE_KEY, Spinner } from "./shared";
+import { CountDot, ErrorLine, Muted, PENDING_INVITE_KEY, Spinner } from "./shared";
 
 /**
  * Friends, team, chat, meet-ups and the park board, folded into one panel in
- * the play sidebar. Like the market, nothing in here polls until it is opened.
+ * the play sidebar. Folded, it only polls friend requests (slowly) for the dot.
  */
 
 type Tab = "friends" | "team" | "chat" | "meetups" | "safety";
@@ -39,6 +39,11 @@ export function CommunityPanel({ zone, myPlayerId }: { zone: Zone; myPlayerId: s
   const [tab, setTab] = React.useState<Tab>("friends");
   const [chat, setChat] = React.useState<OpenChannel | null>(null);
 
+  // Only a light poll while folded, so a new friend request still shows a dot.
+  const access = useCommunityAccess(true);
+  const friends = useFriends(Boolean(access.data?.community), open ? 20_000 : 90_000);
+  const requests = friends.data?.incoming.length ?? 0;
+
   const openChat = (channel: ChatChannel, title: string) => {
     setChat({ channel, title });
     setTab("chat");
@@ -56,13 +61,23 @@ export function CommunityPanel({ zone, myPlayerId }: { zone: Zone; myPlayerId: s
           Community
         </span>
         <span className="font-mono text-[11px] text-muted-foreground">friends · team · parks</span>
+        <CountDot count={requests} />
         <ChevronDown
           className={cn("ml-auto size-4 text-muted-foreground transition-transform", open && "rotate-180")}
         />
       </button>
       {open && (
         <div className="space-y-3 border-t border-border p-3">
-          <Body tab={tab} setTab={setTab} chat={chat} setChat={setChat} openChat={openChat} zone={zone} myPlayerId={myPlayerId} />
+          <Body
+            tab={tab}
+            setTab={setTab}
+            chat={chat}
+            setChat={setChat}
+            openChat={openChat}
+            zone={zone}
+            myPlayerId={myPlayerId}
+            requests={requests}
+          />
         </div>
       )}
     </div>
@@ -77,6 +92,7 @@ function Body({
   openChat,
   zone,
   myPlayerId,
+  requests,
 }: {
   tab: Tab;
   setTab: (tab: Tab) => void;
@@ -85,6 +101,7 @@ function Body({
   openChat: (channel: ChatChannel, title: string) => void;
   zone: Zone;
   myPlayerId: string | null;
+  requests: number;
 }) {
   const access = useCommunityAccess(true);
   if (access.isLoading) return <Spinner />;
@@ -118,10 +135,11 @@ function Body({
             key={t.id}
             size="sm"
             variant={tab === t.id ? "secondary" : "ghost"}
-            className="h-7 px-2 text-xs"
+            className="h-7 gap-1 px-2 text-xs"
             onClick={() => setTab(t.id)}
           >
             {t.label}
+            {t.id === "friends" && <CountDot count={requests} />}
           </Button>
         ))}
       </div>
