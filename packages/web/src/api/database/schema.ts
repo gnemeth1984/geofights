@@ -12,11 +12,30 @@ import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-or
  * Every gameplay row hangs off `player.id`, never the auth user id directly.
  */
 export * from "./auth-schema";
+// Community + safety tables (friends, teams, chat, meet-ups, reports, blocks).
+export * from "./community-schema";
 
 const now = () => new Date();
 const timestamp = (col: string) => integer(col, { mode: "timestamp_ms" });
 
 /* ------------------------------------------------------------------ Player */
+
+/**
+ * Age bands. `16to17` exists as its own band rather than folding into "16+"
+ * because the community rules key off minor/adult, not off consent capability:
+ * a 17-year-old consents for themselves but is still never matched, teamed or
+ * chatted with an adult.
+ */
+export const AGE_BANDS = ["under13", "13to15", "16to17", "18plus"] as const;
+export type AgeBand = (typeof AGE_BANDS)[number];
+
+/** Community segregation key. Minors and adults never share a surface. */
+export const AGE_TIERS = ["minor", "adult"] as const;
+export type AgeTier = (typeof AGE_TIERS)[number];
+
+/** `hidden` is reversible and automatic; `suspended` is a human decision. */
+export const MODERATION_STATES = ["active", "hidden", "suspended"] as const;
+export type ModerationState = (typeof MODERATION_STATES)[number];
 
 export const player = sqliteTable(
   "player",
@@ -27,6 +46,29 @@ export const player = sqliteTable(
     role: text("role", { enum: ["player", "admin"] })
       .notNull()
       .default("player"),
+    /**
+     * Self-declared at sign-up. This is age *screening*, not proof of age —
+     * the app says so in the UI and treats it as the floor for what a player
+     * is allowed to reach, never as a verified fact.
+     */
+    ageBand: text("age_band", { enum: AGE_BANDS }),
+    ageTier: text("age_tier", { enum: AGE_TIERS }),
+    /** Under-13 only: the address the consent link was sent to. */
+    parentEmail: text("parent_email"),
+    /** Set when a parent clicked the emailed link. Null = community locked. */
+    parentConsentAt: timestamp("parent_consent_at"),
+    /**
+     * Coarse home area (2 dp, ≈1.1 km) captured once at sign-up. The precise
+     * fix never leaves the session; this is what park matching reads.
+     */
+    homeLat: real("home_lat"),
+    homeLng: real("home_lng"),
+    homeSetAt: timestamp("home_set_at"),
+    moderationState: text("moderation_state", { enum: MODERATION_STATES })
+      .notNull()
+      .default("active"),
+    /** Permanent 8-char code. The only way another player can find this one. */
+    inviteCode: text("invite_code"),
     currency: integer("currency").notNull().default(500),
     xp: integer("xp").notNull().default(0),
     level: integer("level").notNull().default(1),
@@ -42,6 +84,8 @@ export const player = sqliteTable(
   (t) => [
     uniqueIndex("player_user_id_idx").on(t.userId),
     uniqueIndex("player_username_idx").on(t.username),
+    uniqueIndex("player_invite_code_idx").on(t.inviteCode),
+    index("player_moderation_idx").on(t.moderationState),
   ],
 );
 

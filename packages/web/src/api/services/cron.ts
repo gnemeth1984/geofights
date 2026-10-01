@@ -10,6 +10,8 @@ import { importFromOsm } from "./safety";
 import { leaderboard } from "./players";
 import { list as listOnMarket } from "./marketplace";
 import { reapStaleMatches } from "./matches";
+import { closePastMeetups } from "./meetups";
+import { pruneChat } from "./teams";
 
 /**
  * Scheduled jobs.
@@ -51,6 +53,11 @@ export const JOBS = {
     intervalMs: 7 * 24 * 3_600_000,
     description: "Generate the weekly AI avatar drop and rotate the booster pool.",
     run: runWeeklyAiAvatars,
+  },
+  "community-housekeeping": {
+    intervalMs: 6 * 3_600_000,
+    description: "Prune chat past its retention window and close finished park meet-ups.",
+    run: runCommunityHousekeeping,
   },
   "stale-match-reaper": {
     intervalMs: 15 * 60_000,
@@ -423,4 +430,12 @@ export async function systemStats() {
     liveSpawns: Number(liveSpawns?.count ?? 0),
     activeMatches: Number(activeMatches?.count ?? 0),
   };
+}
+
+/* --------------------------------------------------------- Community chores */
+
+async function runCommunityHousekeeping() {
+  const chat = await pruneChat();
+  const meetups = await closePastMeetups();
+  return { ...chat, ...meetups };
 }

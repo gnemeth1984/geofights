@@ -6,8 +6,10 @@ import { admin } from "./routes/admin";
 import { avatars } from "./routes/avatars";
 import { battle } from "./routes/battle";
 import { boosters } from "./routes/boosters";
+import { community } from "./routes/community";
 import { marketplace } from "./routes/marketplace";
 import { matches } from "./routes/matches";
+import { moderation } from "./routes/moderation";
 import { nature } from "./routes/nature";
 import { ping } from "./routes/ping";
 import { players } from "./routes/players";
@@ -30,6 +32,8 @@ export const router = {
   marketplace,
   matches,
   battle,
+  community,
+  moderation,
   admin,
 };
 

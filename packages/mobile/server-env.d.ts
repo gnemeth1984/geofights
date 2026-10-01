@@ -14,5 +14,9 @@ declare namespace NodeJS {
     ADMIN_EMAILS?: string;
     CRON_SECRET?: string;
     DISABLE_CRON?: string;
+    RESEND_API_KEY?: string;
+    EMAIL_FROM?: string;
+    WEBSITE_URL?: string;
+    RUNABLE_URL?: string;
   }
 }
