@@ -5,8 +5,16 @@
 set -uo pipefail
 
 BASE="${1:-http://localhost:4200}"
-ADMIN_EMAIL="${ADMIN_EMAIL:-admin@arbattle.test}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-Passw0rd!23}"
+# Operator login is never committed. Put ADMIN_EMAIL and ADMIN_PASSWORD in
+# ~/.geofights-admin.env (outside the repo, chmod 600) or export them.
+ADMIN_ENV_FILE="${ADMIN_ENV_FILE:-$HOME/.geofights-admin.env}"
+if [ -z "${ADMIN_PASSWORD:-}" ] && [ -f "$ADMIN_ENV_FILE" ]; then
+  set -a; . "$ADMIN_ENV_FILE"; set +a
+fi
+if [ -z "${ADMIN_EMAIL:-}" ] || [ -z "${ADMIN_PASSWORD:-}" ]; then
+  echo "ADMIN_EMAIL / ADMIN_PASSWORD not set — add them to $ADMIN_ENV_FILE" >&2
+  exit 2
+fi
 STAMP=$(date +%s)
 P_JAR=$(mktemp)
 Q_JAR=$(mktemp)
@@ -67,7 +75,7 @@ PID_P=$(get "$(rpc "$P_JAR" players.me)" '.json.id')
 PID_Q=$(get "$(rpc "$Q_JAR" players.me)" '.json.id')
 check "player signed up" "$(rpc "$P_JAR" players.me)" '.json.username'
 signin "$ADM_JAR" "$ADMIN_EMAIL" "$ADMIN_PASSWORD" >/dev/null
-check "admin session" "$(rpc "$ADM_JAR" players.me)" '.json.role'
+expect "admin session" "$(rpc "$ADM_JAR" players.me)" '.json.role' "admin"
 
 step "safety config + a clean verdict"
 check "rules published" "$(rpc "$P_JAR" safety.config)" '.json.rules[0]'

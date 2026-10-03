@@ -12,8 +12,16 @@ set -uo pipefail
 BASE="${1:-http://localhost:4200}"
 SSE_PORT="${SSE_PORT:-4299}"
 SSE_BASE="http://localhost:$SSE_PORT"
-ADMIN_EMAIL="${ADMIN_EMAIL:-admin@arbattle.test}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-Passw0rd!23}"
+# Operator login is never committed. Put ADMIN_EMAIL and ADMIN_PASSWORD in
+# ~/.geofights-admin.env (outside the repo, chmod 600) or export them.
+ADMIN_ENV_FILE="${ADMIN_ENV_FILE:-$HOME/.geofights-admin.env}"
+if [ -z "${ADMIN_PASSWORD:-}" ] && [ -f "$ADMIN_ENV_FILE" ]; then
+  set -a; . "$ADMIN_ENV_FILE"; set +a
+fi
+if [ -z "${ADMIN_EMAIL:-}" ] || [ -z "${ADMIN_PASSWORD:-}" ]; then
+  echo "ADMIN_EMAIL / ADMIN_PASSWORD not set — add them to $ADMIN_ENV_FILE" >&2
+  exit 2
+fi
 STAMP=$(date +%s)
 A_JAR=$(mktemp)
 B_JAR=$(mktemp)
@@ -47,6 +55,17 @@ signin() {
 
 get() { printf '%s' "$1" | jq -r "$2" 2>/dev/null; }
 
+expect() { # expect <label> <json> <jq-filter> <wanted>
+  local val
+  val=$(get "$2" "$3")
+  if [ "$val" = "$4" ]; then
+    printf '  \033[32mok\033[0m   %s = %s\n' "$1" "$val"
+  else
+    printf '  \033[31mFAIL\033[0m %s -> wanted %s, got %s in %s\n' \
+      "$1" "$4" "$val" "$(printf '%s' "$2" | head -c 200)"
+    FAILED=$((FAILED + 1))
+  fi
+}
 check() { # check <label> <json> <jq-filter>
   local val
   val=$(get "$2" "$3")
@@ -80,9 +99,8 @@ PID_A=$(get "$ME_A" '.json.id')
 PID_B=$(get "$ME_B" '.json.id')
 
 step "admin account (ADMIN_EMAILS) + currency grant"
-signup "$ADM_JAR" "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "Operator" >/dev/null
 signin "$ADM_JAR" "$ADMIN_EMAIL" "$ADMIN_PASSWORD" >/dev/null
-check "admin role" "$(rpc "$ADM_JAR" players.me)" '.json.role'
+expect "admin role" "$(rpc "$ADM_JAR" players.me)" '.json.role' "admin"
 # Fund A so the shop/upgrade path is not blocked by the starting balance.
 check "grant currency to A" \
   "$(rpc "$ADM_JAR" admin.grantCurrency "{\"json\":{\"playerId\":\"$PID_A\",\"amount\":8000,\"note\":\"smoke test\"}}")" \
