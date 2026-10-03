@@ -1,4 +1,5 @@
 import { generateObject, generateText } from "ai";
+import { characterWording } from "../lib/terminology";
 import dedent from "dedent";
 import { z } from "zod";
 import type { Rarity } from "../database/schema";
@@ -40,6 +41,7 @@ const STYLE = dedent`
   You write content for a competitive multiplayer AR battle game played outdoors
   on phones. Characters fight in real-world locations. Tone: sharp, punchy,
   sci-fi industrial. No emoji, no markdown, no quotation marks around names.
+  Always call a fighter a "character" — never "robot", "bot" or "mech".
 `;
 
 /* ------------------------------------------------------------------ Avatars */
@@ -69,7 +71,7 @@ export async function generateAvatarContent(input: {
         modelHint is a short slug the 3D client maps to a mesh, e.g. "quad-strider-heavy".
       `,
     });
-    return object;
+    return { ...object, abilityDescription: characterWording(object.abilityDescription) };
   } catch {
     return fallbackAvatar(input.rarity);
   }
@@ -100,7 +102,11 @@ export async function generateBoosterContent(input: {
         unlocksAbility and abilityDescription to null.
       `,
     });
-    return object;
+    return {
+      ...object,
+      description: characterWording(object.description),
+      abilityDescription: characterWording(object.abilityDescription),
+    };
   } catch {
     return fallbackBooster(input.rarity, input.statModifiers);
   }
@@ -127,7 +133,7 @@ export async function generateSpawnDescription(input: {
         Plain text only.
       `,
     });
-    return text.trim().slice(0, 220) || fallbackSpawnDescription(input);
+    return characterWording(text.trim().slice(0, 220)) || fallbackSpawnDescription(input);
   } catch {
     return fallbackSpawnDescription(input);
   }
@@ -156,7 +162,7 @@ export async function generateBattleMessage(input: {
         ${JSON.stringify(input)}
       `,
     });
-    return text.trim().slice(0, 160) || fallback;
+    return characterWording(text.trim().slice(0, 160)) || fallback;
   } catch {
     return fallback;
   }
@@ -181,7 +187,7 @@ export async function generateMatchSummary(input: {
         Name the standout performance. Plain text.
       `,
     });
-    return text.trim().slice(0, 600) || fallback;
+    return characterWording(text.trim().slice(0, 600)) || fallback;
   } catch {
     return fallback;
   }

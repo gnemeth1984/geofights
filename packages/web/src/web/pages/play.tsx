@@ -32,6 +32,7 @@ import { CollectSheet, type SpawnTarget } from "@/components/play/collect-sheet"
 import { EnvNotice } from "@/components/play/env-notice";
 import { SignupGates } from "@/components/community/signup-gates";
 import { CommunityPanel } from "@/components/community/community-panel";
+import { DropBanner, DropsPanel } from "@/components/play/drops-panel";
 import {
   SafetyBlock,
   SafetyStrip,
@@ -1801,6 +1802,7 @@ function Play() {
               </div>
             )}
 
+            {!activeSpawn && <DropBanner spawns={spawns.data} fix={geo.fix} onSelect={setTappedId} />}
             {activeSpawn && !pickupBlocked && (
               <CollectSheet
                 spawn={activeSpawn}
@@ -1906,6 +1908,7 @@ function Play() {
                     }
                   />
                   {actionNote && <div className="text-[11px] text-destructive">{actionNote}</div>}
+                  <DropsPanel spawns={spawns.data} fix={geo.fix} zone={zone.data ?? null} signedIn={signedIn} onSelect={setTappedId} />
                   {/*
                    * Packs and the loadout. Collapsed by default: this is a camera
                    * screen first, and the shop should not be what the player sees

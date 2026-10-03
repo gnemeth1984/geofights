@@ -36,7 +36,7 @@ export function CollectSheet({
   signedIn: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-primary/40 bg-background/92 p-3 backdrop-blur">
+    <div id="collect-sheet" className="rounded-lg border border-primary/40 bg-background/92 p-3 backdrop-blur">
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-primary/40 bg-primary/10">
           <PackageOpen className="size-4 text-primary" />

@@ -82,6 +82,13 @@ export function useNearbySpawns(fix: Fix, enabled: boolean) {
   );
 }
 
+/** Free personal drops: how many are left today and when the next can land. */
+export function useDropAllowance(enabled: boolean) {
+  return useQuery(
+    orpc.nature.drops.queryOptions({ enabled, refetchInterval: 60_000, staleTime: 15_000 }),
+  );
+}
+
 export function useCollectSpawn() {
   const queryClient = useQueryClient();
   return useMutation(

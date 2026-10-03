@@ -67,7 +67,4 @@ export async function sendEmail(input: {
 }
 
 /** Absolute base for links in mail. Falls back to the production domain. */
-export function siteUrl() {
-  const raw = process.env.WEBSITE_URL || process.env.RUNABLE_URL || "https://geofights.com";
-  return raw.replace(/\/$/, "");
-}
+export { siteUrl } from "../lib/site-url";

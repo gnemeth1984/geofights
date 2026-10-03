@@ -9,7 +9,12 @@ import {
   nearbySpawns,
   nearestZone,
 } from "../services/nature";
-import { PERSONAL_DROPS_PER_DAY, PERSONAL_DROP_COOLDOWN_MS, dropAllowance } from "../services/drops";
+import {
+  PERSONAL_DROPS_PER_DAY,
+  PERSONAL_DROP_COOLDOWN_MS,
+  PERSONAL_DROP_RANGE_M,
+  dropAllowance,
+} from "../services/drops";
 
 /**
  * Nature Exploration (GPS). Clients poll `nearby` with the device position and
@@ -50,6 +55,8 @@ export const nature = {
   drops: playerProc.handler(async ({ context }) => ({
     perDay: PERSONAL_DROPS_PER_DAY,
     cooldownMs: PERSONAL_DROP_COOLDOWN_MS,
+    /** How close to a reviewed park's edge a player must be for one to land. */
+    rangeM: PERSONAL_DROP_RANGE_M,
     ...(await dropAllowance(context.player.id)),
   })),
 
