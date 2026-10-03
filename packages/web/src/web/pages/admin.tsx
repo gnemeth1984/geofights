@@ -73,8 +73,8 @@ function Admin() {
             className="flex items-center gap-2 font-display text-sm font-semibold uppercase tracking-[0.18em]"
           >
             <Terminal className="size-4 text-primary" />
-            AR Battle
-            <span className="text-muted-foreground">Console</span>
+            GeoFights
+            <span className="text-muted-foreground">Admin</span>
           </Link>
           <div className="ml-auto flex items-center gap-2">
             <Link href="/docs">
@@ -189,10 +189,9 @@ function NotOperator() {
         </PanelHeader>
         <PanelBody className="space-y-4 text-sm text-muted-foreground">
           <p>
-            This account is signed in but its player role is{" "}
-            <span className="font-mono text-foreground">player</span>. Add its email to{" "}
-            <span className="font-mono text-foreground">ADMIN_EMAILS</span> and sign in again, or
-            have an existing operator promote it from the Players tab.
+            This account is signed in but it is a player account, not an operator. Add its email
+            to <span className="font-mono text-foreground">ADMIN_EMAILS</span> and sign in again,
+            or have an existing operator promote it from the Players tab.
           </p>
           <Button variant="outline" onClick={() => signOut.mutate()}>
             <LogOut className="size-4" />

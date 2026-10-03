@@ -41,12 +41,23 @@ export async function ensurePlayer(user: AuthUser) {
     .select()
     .from(schema.player)
     .where(eq(schema.player.userId, user.id));
-  if (existing) return existing;
-
   const adminEmails = (process.env.ADMIN_EMAILS ?? "")
     .split(",")
     .map((e: string) => e.trim().toLowerCase())
     .filter(Boolean);
+  if (existing) {
+    // ADMIN_EMAILS also promotes accounts that existed before they were listed,
+    // so "add the email and sign in again" actually works. It never demotes.
+    if (existing.role !== "admin" && adminEmails.includes(user.email.toLowerCase())) {
+      const [promoted] = await db
+        .update(schema.player)
+        .set({ role: "admin" })
+        .where(eq(schema.player.id, existing.id))
+        .returning();
+      return promoted ?? existing;
+    }
+    return existing;
+  }
   const isFirstPlayer = (await countPlayers()) === 0;
 
   const [created] = await db
