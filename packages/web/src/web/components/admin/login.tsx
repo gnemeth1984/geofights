@@ -88,7 +88,10 @@ export function LoginCard() {
           </form>
           <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
             Same email and password as your player account. Only operator accounts get past this
-            screen — everyone else is refused by the server.
+            screen — everyone else is refused by the server.{" "}
+            <Link href="/reset-password" className="underline hover:text-foreground">
+              Forgot password?
+            </Link>
           </p>
         </PanelBody>
       </Panel>

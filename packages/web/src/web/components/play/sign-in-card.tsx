@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link } from "wouter";
 import { LogIn, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,6 +94,11 @@ export function SignInCard({ initialMode = "in" }: { initialMode?: "in" | "up" }
         >
           {mode === "in" ? "No account yet?" : "I already have one"}
         </Button>
+        {mode === "in" && (
+          <Link href="/reset-password" className="self-center text-xs text-muted-foreground underline">
+            Forgot password?
+          </Link>
+        )}
       </div>
     </form>
   );

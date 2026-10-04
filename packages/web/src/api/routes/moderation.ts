@@ -14,6 +14,7 @@ import {
   unblockPlayer,
 } from "../services/moderation";
 import { pendingConsents } from "../services/consent";
+import { openPasswordResets } from "../services/password-reset";
 
 /**
  * Report, block, and the moderation queue behind them.
@@ -72,6 +73,9 @@ export const moderation = {
 
   /** Under-13 accounts waiting on a parent; carries the link to pass on by hand. */
   pendingConsents: adminProc.handler(() => pendingConsents()),
+
+  /** Open password-reset links, for passing on by hand while no email provider is set. */
+  passwordResets: adminProc.handler(() => openPasswordResets()),
 
   history: adminProc
     .input(z.object({ playerId: z.string() }))

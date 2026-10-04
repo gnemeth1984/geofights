@@ -6,6 +6,7 @@ import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel
 import { Empty, Table, TBody, THead } from "@/components/ui/table";
 import { ErrorNote, Loading } from "@/components/admin/state";
 import { Stat } from "@/components/admin/stat";
+import { PasswordResetsPanel } from "@/components/admin/password-resets-panel";
 import {
   useModerationStats,
   usePendingConsents,
@@ -122,6 +123,7 @@ export function ModerationTab() {
       </Panel>
 
       <PendingConsents />
+      <PasswordResetsPanel />
     </div>
   );
 }
