@@ -374,6 +374,11 @@ async function assertAvatar(avatarId: string, playerId: string) {
 
 async function resolveZone(lat?: number, lng?: number) {
   const zone = await nearestZone(lat, lng);
+  if (!zone) {
+    throw new ORPCError("PRECONDITION_FAILED", {
+      message: "There's no checked play area yet, so ranked matches are paused. Training still works.",
+    });
+  }
   return zone.id;
 }
 

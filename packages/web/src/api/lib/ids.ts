@@ -35,6 +35,8 @@ export const ids = {
   block: () => newId("blk"),
   moderationAction: () => newId("mod"),
   zoneSuggestion: () => newId("zsg"),
+  passwordReset: () => newId("pwr"),
+  launchEvent: () => newId("lev"),
 };
 
 /** No I, L, O, 0 or 1 — nothing a code can be misread as. */

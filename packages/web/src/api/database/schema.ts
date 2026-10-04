@@ -78,6 +78,14 @@ export const player = sqliteTable(
     lastLat: real("last_lat"),
     lastLng: real("last_lng"),
     lastSeenAt: timestamp("last_seen_at"),
+    /**
+     * Last position the server itself saw (nearby polls and pickups), so pickup
+     * speed is measured here instead of trusted from the client. Overwritten on
+     * every report; never shown to anyone.
+     */
+    motionLat: real("motion_lat"),
+    motionLng: real("motion_lng"),
+    motionAt: timestamp("motion_at"),
     createdAt: timestamp("created_at").notNull().$defaultFn(now),
     updatedAt: timestamp("updated_at").notNull().$defaultFn(now),
   },
@@ -295,7 +303,8 @@ export const safetyEvent = sqliteTable(
 );
 
 /** What happened to a player's fighting-ground suggestion. */
-export const SUGGESTION_STATUS = ["auto_approved", "pending", "rejected", "duplicate"] as const;
+/** `awaiting_parent`: an under-13's suggestion, held until their parent approves it. */
+export const SUGGESTION_STATUS = ["auto_approved", "pending", "rejected", "duplicate", "awaiting_parent"] as const;
 
 /**
  * A player proposing a playground or park near them as a fighting ground.
@@ -320,9 +329,14 @@ export const zoneSuggestion = sqliteTable(
     checks: text("checks"),
     /** One-line verdict shown to the player and the operator. */
     summary: text("summary"),
+    /** Under-13 only: the parent's one-time approval link token. */
+    parentToken: text("parent_token"),
+    /** When the parent approved or declined. */
+    parentDecidedAt: timestamp("parent_decided_at"),
     createdAt: timestamp("created_at").notNull().$defaultFn(now),
   },
   (t) => [
+    index("zone_suggestion_parent_idx").on(t.parentToken),
     index("zone_suggestion_player_idx").on(t.playerId, t.createdAt),
     index("zone_suggestion_ref_idx").on(t.osmRef),
   ],
@@ -616,3 +630,60 @@ export const leaderboardEntry = sqliteTable(
   },
   (t) => [uniqueIndex("leaderboard_unique_idx").on(t.weekStart, t.playerId)],
 );
+
+/**
+ * Every password-reset request, so an operator can pass the link on by hand
+ * while no email provider is configured. The link is only ever shown in the
+ * admin console and must go to the account's own address.
+ */
+export const passwordReset = sqliteTable(
+  "password_reset",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    email: text("email").notNull(),
+    url: text("url").notNull(),
+    deliveredVia: text("delivered_via", { enum: ["email", "manual"] }).notNull(),
+    deliveryError: text("delivery_error"),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("password_reset_user_idx").on(t.userId, t.createdAt)],
+);
+
+/* ---------------------------------------------------------------- launch */
+
+/**
+ * First-party launch attribution. A `visit` is one browser arriving with a
+ * `?ref=` tag (deduped per browser per day on the client); a `signup` is a
+ * player who created their account after arriving that way. No IPs, no
+ * fingerprints — just the tag and the page.
+ */
+export const LAUNCH_EVENT_KIND = ["visit", "signup"] as const;
+export const launchEvent = sqliteTable(
+  "launch_event",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: LAUNCH_EVENT_KIND }).notNull(),
+    ref: text("ref").notNull(),
+    path: text("path"),
+    playerId: text("player_id"),
+    createdAt: timestamp("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("launch_event_kind_idx").on(t.kind, t.createdAt),
+    index("launch_event_player_idx").on(t.playerId),
+  ],
+);
+
+/** Operator progress on each launch-kit item (copy lives in code). */
+export const LAUNCH_ITEM_STATUS = ["todo", "ready", "posted", "skipped"] as const;
+export const launchItem = sqliteTable("launch_item", {
+  key: text("key").primaryKey(),
+  status: text("status", { enum: LAUNCH_ITEM_STATUS }).notNull().default("todo"),
+  postedUrl: text("posted_url"),
+  postedAt: timestamp("posted_at"),
+  note: text("note"),
+  updatedAt: timestamp("updated_at").notNull().$defaultFn(now),
+});

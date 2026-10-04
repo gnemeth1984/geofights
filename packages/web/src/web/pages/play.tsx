@@ -1097,7 +1097,7 @@ function Play() {
   const doCollect = () => {
     if (!activeSpawn || !geo.fix) return;
     collect.mutate(
-      { spawnPointId: activeSpawn.id, lat: geo.fix.lat, lng: geo.fix.lng },
+      { spawnPointId: activeSpawn.id, lat: geo.fix.lat, lng: geo.fix.lng, speedMps: geo.fix.speedMps },
       {
         onSuccess: (result) => {
           setTappedId(null);

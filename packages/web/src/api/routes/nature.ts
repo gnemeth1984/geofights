@@ -67,6 +67,7 @@ export const nature = {
         spawnPointId: z.string(),
         lat: z.number().min(-90).max(90),
         lng: z.number().min(-180).max(180),
+        speedMps: z.number().min(0).max(500).nullish(),
       }),
     )
     .handler(({ input, context }) =>
@@ -75,6 +76,7 @@ export const nature = {
         playerId: context.player.id,
         lat: input.lat,
         lng: input.lng,
+        speedMps: input.speedMps,
       }),
     ),
 };

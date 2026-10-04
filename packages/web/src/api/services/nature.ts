@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { db } from "../database";
+import { observeSpeed, worstSpeed } from "./movement";
 import * as schema from "../database/schema";
 import { type Rarity } from "../database/schema";
 import { generateSpawnDescription } from "../ai/content";
@@ -27,17 +28,6 @@ export const SPAWNS_PER_WEIGHT = 6;
 export const SPAWN_TTL_HOURS = 26;
 /** Default search radius when a client asks "what's near me". */
 export const DEFAULT_SEARCH_RADIUS_M = 1_500;
-
-/** Seed zone used when no zone exists yet and a match needs one. */
-const FALLBACK_ZONE = {
-  name: "Null Commons",
-  description: "The default staging ground — a flat, open arena for early matches.",
-  centerLat: 0,
-  centerLng: 0,
-  radiusM: 600,
-  spawnWeight: 1,
-  terrain: "open plain",
-};
 
 /* -------------------------------------------------------------------- Zones */
 
@@ -128,12 +118,14 @@ export async function deleteZone(zoneId: string) {
 }
 
 /**
- * Closest active zone to a coordinate, falling back to the highest-weighted
- * zone, and finally seeding the default zone so matchmaking always resolves.
+ * Closest approved zone to a coordinate, falling back to the highest-weighted
+ * one. Null when nothing has been approved yet: there used to be a seeded
+ * "default" zone at 0,0 here, but that was ground nobody had checked, which is
+ * exactly what the game promises never to send anyone to.
  */
 export async function nearestZone(lat?: number, lng?: number) {
   const zones = await approvedZones();
-  if (zones.length === 0) return createZone(FALLBACK_ZONE);
+  if (zones.length === 0) return null;
   if (lat === undefined || lng === undefined) {
     return [...zones].sort((a, b) => b.spawnWeight - a.spawnWeight)[0]!;
   }
@@ -164,7 +156,11 @@ export async function nearbySpawns(input: {
   const radius = input.radiusM ?? DEFAULT_SEARCH_RADIUS_M;
   const box = boundingBox({ lat: input.lat, lng: input.lng }, radius);
   // Near a park with drops left today? Put one down before reading the map.
-  if (input.playerId) await maybeDropForPlayer(input.playerId, input.lat, input.lng);
+  if (input.playerId) {
+    // Feeds the server-side speed check that pickups use.
+    await observeSpeed(input.playerId, input.lat, input.lng);
+    await maybeDropForPlayer(input.playerId, input.lat, input.lng);
+  }
 
   const rows = await db
     .select({
@@ -236,7 +232,11 @@ export async function collectSpawn(input: {
   playerId: string;
   lat: number;
   lng: number;
+  /** The device's own reading, if it sent one. Never the only check. */
+  speedMps?: number | null;
 }) {
+  // Measured before anything can fail, so every attempt counts as a fix.
+  const serverSpeed = await observeSpeed(input.playerId, input.lat, input.lng);
   const [row] = await db
     .select({ spawn: schema.spawnPoint, booster: schema.booster })
     .from(schema.spawnPoint)
@@ -269,6 +269,7 @@ export async function collectSpawn(input: {
     kind: "collect",
     lat: input.lat,
     lng: input.lng,
+    speedMps: worstSpeed(input.speedMps, serverSpeed),
     need: "pickup",
   });
   if (!safety.canPickup) throw unsafeError(safety);
@@ -374,11 +375,8 @@ export async function refreshDailySpawns(opts: { perWeight?: number } = {}) {
     .where(lte(schema.spawnPoint.expiresAt, new Date()))
     .returning({ id: schema.spawnPoint.id });
 
+  // No approved ground means no drops — never invent a zone to fill the gap.
   const zones = await approvedZones();
-  if (zones.length === 0) {
-    const seeded = await createZone(FALLBACK_ZONE);
-    zones.push(seeded);
-  }
 
   let created = 0;
   const perZone: { zoneId: string; zoneName: string; spawned: number }[] = [];
