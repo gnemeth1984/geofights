@@ -7,6 +7,8 @@ const SWAPS: Array<[RegExp, string]> = [
   [/\brobots\b/gi, "characters"],
   [/\brobotic\b/gi, "mechanical"],
   [/\brobot\b/gi, "character"],
+  [/\b(?:war)?bots\b/gi, "characters"],
+  [/\b(?:war)?bot\b/gi, "character"],
 ];
 
 function matchCase(source: string, replacement: string) {
