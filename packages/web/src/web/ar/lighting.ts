@@ -103,7 +103,7 @@ export function installLightRig(
   if (envIntensity > 0) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     const room = new RoomEnvironment();
-    envMap = pmrem.fromScene(room, 0.04, 0.1, 30, 256).texture;
+    envMap = pmrem.fromScene(room, 0.04, 0.1, 30).texture;
     scene.environment = envMap;
     scene.environmentIntensity = envIntensity;
     // The room itself is scaffolding for the prefilter — nothing renders it

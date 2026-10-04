@@ -18,6 +18,8 @@ export type SpawnTarget = {
   collectRadiusM: number;
   inRange: boolean;
   booster: { name: string; rarity: string; tier: number; description: string };
+  /** A free drop reserved for this player. */
+  personal?: boolean;
 };
 
 export function CollectSheet({
