@@ -32,6 +32,7 @@ const RESULT_COPY: Record<Result["status"], { title: string; tone: "live" | "war
   pending: { title: "Sent to a person", tone: "warn" },
   rejected: { title: "Can't use this one", tone: "bad" },
   duplicate: { title: "Already a ground", tone: "neutral" },
+  awaiting_parent: { title: "Sent to your parent", tone: "warn" },
 };
 
 function formatDistance(m: number) {
@@ -86,8 +87,10 @@ function SuggestSheet({ fix, onClose }: { fix: GeoFix | null; onClose: () => voi
             <h2 className="text-base font-semibold">Suggest a fighting ground</h2>
             <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
               Pick a playground or park near you. We check it against roads, rail, water and restricted land, and
-              an AI reviewer reads it. Clean on every count, it goes live straight away. If anything looks off, a
-              person checks it first.
+              an AI reviewer reads it.{" "}
+              {nearby.data?.needsParent
+                ? "If it passes, we email your parent and it only goes live once they say yes."
+                : "Clean on every count, it goes live straight away. If anything looks off, a person checks it first."}
             </p>
           </div>
           <Button size="sm" variant="ghost" className="size-8 shrink-0 p-0" onClick={onClose} title="Close">

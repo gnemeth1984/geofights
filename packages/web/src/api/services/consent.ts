@@ -185,12 +185,13 @@ export async function requestParentConsent(
   return {
     status: row!.status,
     parentEmail,
-    deliveredVia: delivery.via,
     /**
-     * Returned only when no provider accepted it, so an operator can pass the
-     * link on. Never returned once mail actually goes out.
+     * "manual" means no provider took it and an operator passes the link on
+     * from the Moderation tab. The link itself is never returned here: this
+     * goes back to the child's own device, and a child holding the link could
+     * approve themselves.
      */
-    manualLink: delivery.ok ? null : link,
+    deliveredVia: delivery.via,
   };
 }
 

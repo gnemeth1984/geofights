@@ -20,6 +20,7 @@ const STATUS_TONE = {
   pending: "warn",
   rejected: "bad",
   duplicate: "neutral",
+  awaiting_parent: "warn",
 } as const;
 
 export function SuggestionsPanel() {
@@ -45,14 +46,14 @@ export function SuggestionsPanel() {
           <ErrorNote error={audit.error} />
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No suggestions yet. Players 13 and over can suggest a playground or park from the training area.
+            No suggestions yet. Players suggest a playground or park from the training area; under-13s need their parent's yes.
           </p>
         ) : (
           <ul className="divide-y divide-border">
             {rows.map((s) => (
               <li key={s.id} className="py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={STATUS_TONE[s.status]}>{s.status.replace("_", " ")}</Badge>
+                  <Badge tone={STATUS_TONE[s.status]}>{s.status.replace(/_/g, " ")}</Badge>
                   <span className="font-medium">{s.name}</span>
                   <span className="text-xs text-muted-foreground">
                     {s.playerName ?? "unknown"} · {s.ageBand ?? "?"} · {relative(s.createdAt)} · {num(s.radiusM)} m
@@ -65,7 +66,8 @@ export function SuggestionsPanel() {
                   >
                     {s.osmRef}
                   </a>
-                  {s.zoneId && s.zoneReview && s.status !== "duplicate" && (
+                  {s.parentLink && <ParentLink link={s.parentLink} />}
+                  {s.zoneId && s.zoneReview && s.status !== "duplicate" && s.status !== "awaiting_parent" && (
                     <div className="ml-auto flex items-center gap-1.5">
                       <span className="text-xs text-muted-foreground">zone: {s.zoneReview}</span>
                       {s.zoneReview !== "approved" && (
@@ -129,5 +131,25 @@ export function SuggestionsPanel() {
         )}
       </PanelBody>
     </Panel>
+  );
+}
+
+/** Under-13 suggestion: the parent's approval link, for forwarding by hand. */
+function ParentLink({ link }: { link: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="ml-auto"
+      onClick={() =>
+        void navigator.clipboard.writeText(link).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1_500);
+        })
+      }
+    >
+      {copied ? "Copied" : "Copy parent link"}
+    </Button>
   );
 }

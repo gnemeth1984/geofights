@@ -7,7 +7,8 @@ import { db } from "../database";
 import * as schema from "../database/schema";
 import { FAST_MODEL, aiConfigured, gateway } from "../ai/gateway";
 import { distanceM } from "../lib/geo";
-import { ids } from "../lib/ids";
+import { ids, newShareCode } from "../lib/ids";
+import { sendEmail, siteUrl } from "./email";
 import { elementCenter, overpassRequest, radiusFromBounds, scanHazardsAround } from "./safety";
 import { hazardsInArea, playgroundsNear } from "./zone-scout";
 
@@ -246,6 +247,7 @@ export async function suggestGround(input: {
     summary: string,
     checks: Check[],
     zoneId: string | null,
+    parentToken: string | null = null,
   ) => {
     const [row] = await db
       .insert(schema.zoneSuggestion)
@@ -262,6 +264,7 @@ export async function suggestGround(input: {
         status,
         checks: JSON.stringify(checks),
         summary,
+        parentToken,
       })
       .returning();
     return { status, summary, name, zoneId, checks, id: row!.id };
@@ -367,7 +370,11 @@ export async function suggestGround(input: {
   });
 
   const major = checks.filter((c) => !c.ok && c.major);
-  const autoApprove = major.length === 0;
+  const passed = major.length === 0;
+  // An under-13's suggestion never goes live on the checks alone: it waits,
+  // unplayable, until their parent approves it from their own inbox.
+  const needsParent = player.ageBand === "under13";
+  const autoApprove = passed && !needsParent;
   const now = new Date();
   const [zone] = await db
     .insert(schema.zone)
@@ -384,12 +391,27 @@ export async function suggestGround(input: {
       review: autoApprove ? "approved" : "pending",
       source: "player",
       osmRef: input.osmRef,
-      reviewNote: autoApprove
-        ? `Auto-approved: ${checks.length} checks passed.`
-        : `Needs review: ${major.map((c) => c.name).join(", ")}.`,
+      reviewNote: needsParent
+        ? `Waiting for a parent (under-13 suggestion). Checks ${passed ? "all passed" : `flagged: ${major.map((c) => c.name).join(", ")}`}.`
+        : autoApprove
+          ? `Auto-approved: ${checks.length} checks passed.`
+          : `Needs review: ${major.map((c) => c.name).join(", ")}.`,
       reviewedAt: autoApprove ? now : null,
     })
     .returning();
+
+  if (needsParent) {
+    const token = `${newShareCode(8)}${newShareCode(8)}${newShareCode(8)}`.toLowerCase();
+    const row = await record(
+      "awaiting_parent",
+      `${name} is waiting for your parent to say yes. We've asked them.`,
+      checks,
+      zone!.id,
+      token,
+    );
+    await askParent({ player, name, token });
+    return row;
+  }
 
   return record(
     autoApprove ? "auto_approved" : "pending",
@@ -399,6 +421,113 @@ export async function suggestGround(input: {
     checks,
     zone!.id,
   );
+}
+
+/* ------------------------------------------------- parent approval (u13) */
+
+function parentLink(token: string) {
+  return `${siteUrl()}/parent-ground?token=${token}`;
+}
+
+async function askParent(input: { player: typeof schema.player.$inferSelect; name: string; token: string }) {
+  if (!input.player.parentEmail) return;
+  const link = parentLink(input.token);
+  await sendEmail({
+    to: input.player.parentEmail,
+    subject: `${input.player.username} suggested a play area on GeoFights`,
+    text: [
+      `${input.player.username} suggested "${input.name}" as a GeoFights play area.`,
+      "",
+      "It has been checked against roads, rail, water and restricted land. It only goes live if you say yes:",
+      link,
+      "",
+      "If you don't recognise this, ignore it and nothing changes.",
+    ].join("\n"),
+  });
+}
+
+async function suggestionByToken(token: string) {
+  const [row] = await db
+    .select({ s: schema.zoneSuggestion, username: schema.player.username })
+    .from(schema.zoneSuggestion)
+    .leftJoin(schema.player, eq(schema.player.id, schema.zoneSuggestion.playerId))
+    .where(eq(schema.zoneSuggestion.parentToken, token.trim().toLowerCase()));
+  if (!row) throw new ORPCError("NOT_FOUND", { message: "That link is not valid." });
+  return row;
+}
+
+/** What the parent sees: the place, what the checks found, and whether it's still open. */
+export async function parentGroundView(token: string) {
+  const { s, username } = await suggestionByToken(token);
+  const checks = s.checks ? (JSON.parse(s.checks) as Check[]) : [];
+  return {
+    name: s.name,
+    lat: s.lat,
+    lng: s.lng,
+    radiusM: s.radiusM,
+    username: username ?? "your child",
+    open: s.status === "awaiting_parent",
+    status: s.status,
+    checks: checks.map((c) => ({ name: c.name, ok: c.ok, detail: c.detail })),
+  };
+}
+
+/**
+ * The parent's answer. Yes + clean checks puts the ground live; yes with any
+ * flagged check passes it to an operator instead; no turns it down.
+ */
+export async function parentGroundDecide(token: string, approve: boolean) {
+  const { s } = await suggestionByToken(token);
+  if (s.status !== "awaiting_parent") {
+    throw new ORPCError("BAD_REQUEST", { message: "This suggestion has already been answered." });
+  }
+  const checks = s.checks ? (JSON.parse(s.checks) as Check[]) : [];
+  const clean = checks.every((c) => c.ok || !c.major);
+  const now = new Date();
+  const status = !approve ? "rejected" : clean ? "auto_approved" : "pending";
+  const review = !approve ? "rejected" : clean ? "approved" : "pending";
+  if (s.zoneId) {
+    await db
+      .update(schema.zone)
+      .set({
+        review,
+        reviewNote: !approve
+          ? "Declined by the player's parent."
+          : clean
+            ? `Approved by the player's parent; ${checks.length} checks passed.`
+            : "Parent said yes, but a check flagged it — needs a person.",
+        reviewedAt: review === "pending" ? null : now,
+      })
+      .where(eq(schema.zone.id, s.zoneId));
+  }
+  const summary = !approve
+    ? `Your parent said no to ${s.name}.`
+    : clean
+      ? `Your parent said yes — ${s.name} is live as a fighting ground.`
+      : `Your parent said yes. A person will check ${s.name} before it goes live.`;
+  await db
+    .update(schema.zoneSuggestion)
+    .set({ status, summary, parentDecidedAt: now })
+    .where(eq(schema.zoneSuggestion.id, s.id));
+  return { status, name: s.name };
+}
+
+/** Under-13 suggestions still waiting, with the link an operator can forward. */
+export async function awaitingParentSuggestions() {
+  const rows = await db
+    .select({
+      id: schema.zoneSuggestion.id,
+      name: schema.zoneSuggestion.name,
+      token: schema.zoneSuggestion.parentToken,
+      createdAt: schema.zoneSuggestion.createdAt,
+      username: schema.player.username,
+      parentEmail: schema.player.parentEmail,
+    })
+    .from(schema.zoneSuggestion)
+    .leftJoin(schema.player, eq(schema.player.id, schema.zoneSuggestion.playerId))
+    .where(eq(schema.zoneSuggestion.status, "awaiting_parent"))
+    .orderBy(desc(schema.zoneSuggestion.createdAt));
+  return rows.map(({ token, ...r }) => ({ ...r, link: token ? parentLink(token) : null }));
 }
 
 /** An existing approved or pending zone whose circle already holds this point. */
@@ -449,9 +578,10 @@ export async function recentSuggestions(limit = 60) {
     .leftJoin(schema.zone, eq(schema.zone.id, schema.zoneSuggestion.zoneId))
     .orderBy(desc(schema.zoneSuggestion.createdAt))
     .limit(limit);
-  return rows.map((r) => ({
-    ...r.suggestion,
-    checks: r.suggestion.checks ? (JSON.parse(r.suggestion.checks) as Check[]) : [],
+  return rows.map(({ suggestion: { parentToken, ...suggestion }, ...r }) => ({
+    ...suggestion,
+    parentLink: parentToken && suggestion.status === "awaiting_parent" ? parentLink(parentToken) : null,
+    checks: suggestion.checks ? (JSON.parse(suggestion.checks) as Check[]) : [],
     playerName: r.playerName,
     ageBand: r.ageBand,
     zoneReview: r.zoneReview,

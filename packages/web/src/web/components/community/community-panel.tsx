@@ -163,18 +163,19 @@ function Body({
 function ParentConsentStatus({
   consent,
 }: {
-  consent: { status: string; parentEmail: string | null };
+  consent: { status: string; parentEmail: string | null; deliveredVia?: string | null };
 }) {
   const resend = useResendParentConsent();
   const [email, setEmail] = React.useState(consent.parentEmail ?? "");
-  const [sent, setSent] = React.useState(false);
+  const [sent, setSent] = React.useState<null | "email" | "manual">(null);
+  const manual = (sent ?? consent.deliveredVia) === "manual";
 
   return (
     <form
       className="space-y-1.5 rounded-md border border-accent/40 bg-accent/10 p-2.5"
       onSubmit={(event) => {
         event.preventDefault();
-        resend.mutate({ parentEmail: email.trim() }, { onSuccess: () => setSent(true) });
+        resend.mutate({ parentEmail: email.trim() }, { onSuccess: (result) => setSent(result.deliveredVia) });
       }}
     >
       <div className="flex items-center gap-1.5 text-xs font-medium">
@@ -183,7 +184,9 @@ function ParentConsentStatus({
       <Muted>
         {consent.status === "expired"
           ? "The last link ran out. Send a new one."
-          : `We asked ${consent.parentEmail ?? "your parent"} to confirm. Ask them to check their inbox.`}
+          : manual
+            ? `The GeoFights team will send the permission link to ${consent.parentEmail ?? "your parent"} by hand. That can take up to a day.`
+            : `We emailed ${consent.parentEmail ?? "your parent"} a permission link. Ask them to check their inbox.`}
       </Muted>
       <div className="flex gap-1.5">
         <Input
@@ -197,7 +200,10 @@ function ParentConsentStatus({
           Resend
         </Button>
       </div>
-      {sent && <p className="text-xs text-primary">Sent again.</p>}
+      {sent === "email" && <p className="text-xs text-primary">New link emailed. The old one no longer works.</p>}
+      {sent === "manual" && (
+        <p className="text-xs text-primary">Request updated. The team will send the new link by hand.</p>
+      )}
       <ErrorLine error={resend.error} />
     </form>
   );

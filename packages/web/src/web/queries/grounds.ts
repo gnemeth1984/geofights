@@ -46,3 +46,15 @@ export function useSuggestGround() {
 export function useSuggestionAudit(enabled: boolean) {
   return useQuery(orpc.grounds.audit.queryOptions({ input: { limit: 60 }, enabled }));
 }
+
+/* -------------------------------------------- public: parent approval link */
+
+export function useParentGround(token: string) {
+  return useQuery(
+    orpc.grounds.parentView.queryOptions({ input: { token }, enabled: token.length >= 12, retry: false }),
+  );
+}
+
+export function useParentGroundDecide() {
+  return useMutation(orpc.grounds.parentDecide.mutationOptions());
+}

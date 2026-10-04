@@ -778,6 +778,19 @@ export async function reviewZone(input: {
   review: (typeof schema.ZONE_REVIEW)[number];
   note?: string;
 }) {
+  if (input.review === "approved") {
+    // An under-13's suggestion is the parent's call, not ours to wave through.
+    const [waiting] = await db
+      .select({ id: schema.zoneSuggestion.id })
+      .from(schema.zoneSuggestion)
+      .where(and(eq(schema.zoneSuggestion.zoneId, input.zoneId), eq(schema.zoneSuggestion.status, "awaiting_parent")))
+      .limit(1);
+    if (waiting) {
+      throw new ORPCError("PRECONDITION_FAILED", {
+        message: "A parent still has to approve this ground. It can't be approved until they do.",
+      });
+    }
+  }
   const [row] = await db
     .update(schema.zone)
     .set({ review: input.review, reviewNote: input.note ?? null, reviewedAt: new Date() })
