@@ -9,6 +9,7 @@ import {
   FlaskConical,
   LogOut,
   MapPin,
+  Megaphone,
   ShieldAlert,
   Sparkles,
   Store,
@@ -22,6 +23,7 @@ import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel
 import { ContentTab } from "@/components/admin/content-tab";
 import { EconomyTab } from "@/components/admin/economy-tab";
 import { JobsTab } from "@/components/admin/jobs-tab";
+import { LaunchTab } from "@/components/admin/launch-tab";
 import { LoginCard } from "@/components/admin/login";
 import { MarketTab } from "@/components/admin/market-tab";
 import { MatchesTab } from "@/components/admin/matches-tab";
@@ -46,6 +48,7 @@ const TABS = [
   { id: "economy", label: "Economy", icon: Coins, render: () => <EconomyTab /> },
   { id: "jobs", label: "Jobs", icon: Clock, render: () => <JobsTab /> },
   { id: "content", label: "AI content", icon: Sparkles, render: () => <ContentTab /> },
+  { id: "launch", label: "Launch", icon: Megaphone, render: () => <LaunchTab /> },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -167,6 +170,7 @@ function Admin() {
 }
 
 const BLURBS: Record<TabId, string> = {
+  launch: "Promotion: social posts and where they stand, visits and sign-ups per channel, and press-kit health.",
   overview: "Live system state — table counts, AI engine status, realtime subscribers, cron health.",
   players: "Accounts, balances and roles. Grant currency, promote operators, mint avatars.",
   zones: "GPS zones for Nature Exploration and the boosters currently findable in them.",
