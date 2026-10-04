@@ -3,13 +3,12 @@
  *
  * It used to live inside the battle engine, next to the database. That was
  * fine while the only thing that needed a number was the engine writing it to
- * `battle_state` — but the training area needs the *same* number without any
- * of the consequences: it shows the player what a swing would have done and
- * then throws it away, leaving health untouched.
+ * `battle_state` — but the training area needs the *same* number on the
+ * client, where a sparring bout takes it off a local health bar.
  *
  * So the arithmetic moved here, where it has no imports and can be read by the
- * client. The engine still owns the authoritative call: a training number is
- * computed locally, is never sent anywhere, and nothing reads it back.
+ * client. The engine still owns the authoritative call for matches: a training
+ * bout is computed locally and is never sent anywhere.
  */
 
 /** Damage variance applied to every hit. */

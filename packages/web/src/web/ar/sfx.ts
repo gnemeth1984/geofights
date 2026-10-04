@@ -61,7 +61,7 @@ export type Cue =
   | "dodge"
   /** A block turned around into an answer. */
   | "counter"
-  /** A training-area hit: counted, not taken. */
+  /** A training-area hit landing on a sparring bar. */
   | "training_hit"
   /** The sparring partner committing to something. */
   | "bot_growl"
@@ -181,8 +181,8 @@ const CUES: Record<Cue, Voice[]> = {
     { wave: "square", from: 330, to: 150, attack: 0.002, decay: 0.1, gain: 0.2, cutoff: 1_600, delay: 0.09 },
     { wave: "sawtooth", from: 620, to: 180, attack: 0.003, decay: 0.26, gain: 0.22, cutoff: 2_600, delay: 0.19 },
   ],
-  // Training: the same shape as a hit, an octave up and softer. It has to read
-  // as "counted, not taken" without the player being told twice.
+  // Shadow-boxing: the same shape as a hit, an octave up and softer — the
+  // number is shown but nothing comes off a bar. Sparring uses the real hit.
   training: [
     { wave: "triangle", from: 520, to: 300, attack: 0.003, decay: 0.12, gain: 0.16, cutoff: 2_400 },
     { wave: "sine", from: 780, to: 640, attack: 0.004, decay: 0.16, gain: 0.1, cutoff: 3_200, delay: 0.06 },

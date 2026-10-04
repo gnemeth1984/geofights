@@ -20,8 +20,8 @@ import {
  * round trip — a seed is the whole thing, which also means the same seed always
  * brings back the same opponent.
  *
- * Nothing it does resolves. It has no battle state, deals no damage and awards
- * nothing; the timer that drives it only chooses which animation to play next.
+ * It has no server-side battle state and awards nothing; the timer that drives
+ * it chooses its next move, and `useTrainingBout` takes the damage off the bars.
  */
 
 const RARITIES = ["common", "rare", "epic", "legendary"] as const;
@@ -82,7 +82,7 @@ export function pickRandom<T>(pool: ReadonlyArray<T>): T | null {
 const TAUNTS = [
   "Again. Slower this time.",
   "Show me the combination.",
-  "Nothing lands here. Swing anyway.",
+  "First one down loses. Ready?",
   "You are dropping your guard.",
   "Same body, better footwork.",
 ];

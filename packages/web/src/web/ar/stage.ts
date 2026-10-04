@@ -1430,20 +1430,6 @@ export class ARStage {
 
   /* ----------------------------------------------------------------- impact */
 
-  /**
-   * How far past the close guard a given move can actually touch: what it
-   * swings, plus the ground it eats on the way in.
-   *
-   * Both numbers are the hit check's own, so the scene and the server agree on
-   * what a dash buys. A state that is not an attack — a guard, a hit reaction,
-   * a celebration — reaches nothing, because nothing about it is a blow.
-   */
-  private reach(state: AnimationState): number {
-    const profile = ATTACK_PROFILE[state];
-    if (!profile) return 0;
-    return profile.reachM + profile.closesM;
-  }
-
   /** Metres between the two bodies on the floor, or null with nobody to fight. */
   private gapBetween(): number | null {
     const anchor = this.character;
@@ -2184,6 +2170,11 @@ export class ARStage {
   setCharacterHealth(ratio: number) {
     this.characterHealth = Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 1;
     this.character?.setHealth(this.characterHealth);
+  }
+
+  /** The opponent's bar, 0..1 — a training bout takes real damage off it. */
+  setSparringHealth(ratio: number) {
+    this.sparring?.setHealth(Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 1);
   }
 
   flashCharacter() {
