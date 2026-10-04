@@ -10,6 +10,7 @@ import { battle } from "./routes/battle";
 import { boosters } from "./routes/boosters";
 import { community } from "./routes/community";
 import { grounds } from "./routes/grounds";
+import { launch } from "./routes/launch";
 import { marketplace } from "./routes/marketplace";
 import { matches } from "./routes/matches";
 import { moderation } from "./routes/moderation";
@@ -33,6 +34,7 @@ export const router = {
   nature,
   safety,
   grounds,
+  launch,
   marketplace,
   matches,
   battle,

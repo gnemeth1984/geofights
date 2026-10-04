@@ -6,6 +6,9 @@ import Admin from "./pages/admin";
 import Docs from "./pages/docs";
 import ParentConsent from "./pages/parent-consent";
 import AddFriend from "./pages/add-friend";
+import ParentGround from "./pages/parent-ground";
+import ResetPassword from "./pages/reset-password";
+import Press from "./pages/press";
 
 // The AR client pulls in Three.js — a third of the bundle on its own. Split so
 // the console and the landing page do not pay for a renderer they never use.
@@ -15,12 +18,14 @@ const CharacterLab = lazy(() => import("./pages/character-lab"));
 import { Provider } from "./components/provider";
 import { InstallPrompt } from "./components/install-prompt";
 import { RouteMeta } from "./components/route-meta";
+import { LaunchRef } from "./components/launch-ref";
 import { AgentFeedback } from "@runablehq/website-runtime";
 
 function App() {
   return (
     <Provider>
       <RouteMeta />
+      <LaunchRef />
       <Switch>
         {/* Public, indexable: the game's front door. Signed-in players bounce to /play. */}
         <Route path="/" component={Landing} />
@@ -31,6 +36,9 @@ function App() {
         {/* Landing pages for the parent-consent email and a scanned friend QR. noindex. */}
         <Route path="/parent-consent" component={ParentConsent} />
         <Route path="/add-friend" component={AddFriend} />
+        <Route path="/parent-ground" component={ParentGround} />
+        <Route path="/reset-password" component={ResetPassword} />
+        <Route path="/press" component={Press} />
         <Route path="/play">
           <Suspense
             fallback={
