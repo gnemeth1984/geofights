@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 import { Crosshair, Dumbbell, RefreshCw, RotateCcw, Swords, Trophy, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,8 @@ import type { TrainingHit, TrainingOutcome } from "@/hooks/use-training-bout";
  * Sparring is a real bout: every hit goes through the engine's damage
  * formula and comes off the target's health bar, and the first body to zero
  * loses the round. It is still training — nothing is sent to the server, so a
- * knock-out costs no wins, coins or rating, and a rematch starts both full.
+ * knock-out costs no boosters, wins, coins or rating; a few seconds later
+ * both bars refill and the next round starts on its own.
  */
 
 export type { TrainingHit };
@@ -398,6 +399,9 @@ function HealthRow({
   );
 }
 
+/** Seconds a K.O. stays on screen before both bars refill on their own. */
+const AUTO_RESTART_S = 3;
+
 function KnockOut({
   outcome,
   partnerName,
@@ -410,6 +414,17 @@ function KnockOut({
   onNewPartner: () => void;
 }) {
   const won = outcome === "won";
+  const [left, setLeft] = React.useState(AUTO_RESTART_S);
+  // Read through a ref so a parent re-render doesn't restart the countdown.
+  const rematch = React.useRef(onRematch);
+  rematch.current = onRematch;
+  React.useEffect(() => {
+    const tick = window.setInterval(() => setLeft((s) => s - 1), 1000);
+    return () => window.clearInterval(tick);
+  }, []);
+  React.useEffect(() => {
+    if (left <= 0) rematch.current();
+  }, [left]);
   return (
     <output
       className={`mb-1.5 block rounded-lg border p-2.5 backdrop-blur ${
@@ -423,12 +438,12 @@ function KnockOut({
         </span>
       </div>
       <p className="mt-0.5 text-[10px] text-muted-foreground">
-        Training round · no wins, coins or rating change.
+        Training · no boosters, wins, coins or rating change. Next round in {Math.max(0, left)}…
       </p>
       <div className="mt-2 flex gap-1.5">
         <Button size="sm" className="h-7 flex-1 text-[11px]" onClick={onRematch}>
           <RotateCcw className="size-3.5" />
-          Rematch
+          Go now
         </Button>
         <Button size="sm" variant="outline" className="h-7 flex-1 text-[11px]" onClick={onNewPartner}>
           <RefreshCw className="size-3.5" />
