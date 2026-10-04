@@ -6,6 +6,7 @@ import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel
 import { Badge } from "@/components/ui/badge";
 import { Empty, IdCell, Table, TBody, THead } from "@/components/ui/table";
 import { ErrorNote, Loading } from "@/components/admin/state";
+import { SuggestionsPanel } from "@/components/admin/suggestions-panel";
 import {
   useCreateHazard,
   useDeleteHazard,
@@ -199,6 +200,8 @@ export function SafetyTab() {
           </Table>
         )}
       </Panel>
+
+      <SuggestionsPanel />
 
       <Panel>
         <PanelHeader>

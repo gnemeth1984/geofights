@@ -26,7 +26,9 @@ import { MatchResult, type ResultForfeit, type ResultPlayer } from "@/components
 import { MarketPanel } from "@/components/play/market-panel";
 import { BattlePad, type IncomingBlow } from "@/components/play/battle-pad";
 import { RevealHandle } from "@/components/play/reveal-handle";
-import { TrainingMode, type TrainingHit } from "@/components/play/training-mode";
+import { SuggestGround } from "@/components/play/suggest-ground";
+import { TrainingMode } from "@/components/play/training-mode";
+import { useTrainingBout } from "@/hooks/use-training-bout";
 import { MoveStick } from "@/components/play/move-stick";
 import { CollectSheet, type SpawnTarget } from "@/components/play/collect-sheet";
 import { EnvNotice } from "@/components/play/env-notice";
@@ -47,7 +49,6 @@ import {
   movesForForm,
   parseStoredForm,
 } from "../../api/lib/creature-form";
-import { computeDamage } from "../../api/lib/damage";
 import {
   ATTACK_PROFILE,
   DEFENCE_PROFILE,
@@ -56,7 +57,6 @@ import {
   staminaCheck,
   staminaNow,
 } from "../../api/lib/move-combat";
-import { trainingStats } from "../../api/lib/training-stats";
 import { isAnimationState, strikeFrames, type AnimationState } from "@/ar/character";
 import { cueForMove, playCue } from "@/ar/sfx";
 import {
@@ -218,11 +218,6 @@ function Play() {
   const [sparring, setSparring] = React.useState(false);
   const [partnerSeed, setPartnerSeed] = React.useState(() => newSparringSeed());
   const [partnerMove, setPartnerMove] = React.useState<string | null>(null);
-  /**
-   * The last training exchange's calculated damage. Presentation only: it is
-   * shown, it is never applied, and nothing reads it back.
-   */
-  const [lastHit, setLastHit] = React.useState<TrainingHit | null>(null);
   /** Whether the pulled-up chrome is showing over a full-screen mode. */
   const [chromeRevealed, setChromeRevealed] = React.useState(false);
   /** Sideways: stick under the left thumb, moves under the right. */
@@ -598,6 +593,38 @@ function Play() {
 
   const partner = React.useMemo(() => rollSparringPartner(partnerSeed), [partnerSeed]);
 
+  /* ------------------------------------------------------- training bout */
+
+  /** Real health in sparring: hits come off the bars and a KO ends the round. */
+  const bout = useTrainingBout({
+    mine: { form: characterForm, rarity: selectedAvatar?.rarity ?? null, level: loadoutLevel },
+    partner: { form: partner.form, rarity: partner.rarity, level: partner.level },
+    sparring: trainingMode && sparring,
+    onHype: reportTrainingHype,
+  });
+  const scoreTrainingHit = bout.score;
+  const resetBout = bout.reset;
+  const boutOver = bout.outcome !== null;
+
+  // The bars on the bodies follow the bout; a KO plays out on both of them.
+  React.useEffect(() => {
+    const target = stage.stage;
+    if (!target || !trainingMode || !sparring) return;
+    target.setCharacterHealth(bout.myHp / Math.max(1, bout.myMax));
+    target.setSparringHealth(bout.partnerHp / Math.max(1, bout.partnerMax));
+  }, [stage.stage, trainingMode, sparring, bout.myHp, bout.myMax, bout.partnerHp, bout.partnerMax]);
+  React.useEffect(() => {
+    const target = stage.stage;
+    if (!target || !bout.outcome) return;
+    target.playCharacterAnimation(bout.outcome === "won" ? "celebrate" : "slump");
+    target.playSparringAnimation(bout.outcome === "won" ? "slump" : "celebrate");
+    playCue(bout.outcome === "won" ? "combo_impact" : "guard");
+  }, [stage.stage, bout.outcome]);
+  React.useEffect(() => {
+    if (!sparring) stage.stage?.setCharacterHealth(1);
+  }, [stage.stage, sparring]);
+
+
   /**
    * The partner's reply to a move the player pressed: one timer per moment the
    * move connects, so a chain gets answered on both of its hits. Cleared on the
@@ -674,7 +701,6 @@ function Play() {
     if (!other) {
       target.setSparringPartner(null);
       setPartnerMove(null);
-      setLastHit(null);
       return;
     }
     // A training bout stands them beside each other so both bodies are in
@@ -683,9 +709,9 @@ function Play() {
     target.setSparringPartner(other);
     if (bot) target.saySparringLine(sparTaunt(partner.seed), 4_000);
     setPartnerMove(null);
-    setLastHit(null);
+    resetBout();
     return () => target.setSparringPartner(null);
-  }, [stage.stage, trainingMode, sparring, partner, fullscreenBattle, duelOpponent]);
+  }, [stage.stage, trainingMode, sparring, partner, fullscreenBattle, duelOpponent, resetBout]);
 
   /**
    * A live fight seats itself.
@@ -720,68 +746,6 @@ function Play() {
   });
   const { commitUntil, setCommitUntil, onBeat, readyAt, attackReadyAt } = clock;
 
-  /* --------------------------------------------------- training-only damage */
-
-  /**
-   * The numbers a training exchange is scored with. A real match reads them
-   * off `battle_state`; the training area has no match, so they are derived
-   * from the body, its rarity and its booster level by the same curves the
-   * server rolls a real character from.
-   */
-  const myTrainingStats = React.useMemo(
-    () =>
-      trainingStats({
-        form: characterForm,
-        rarity: selectedAvatar?.rarity ?? null,
-        level: loadoutLevel,
-      }),
-    [characterForm, selectedAvatar?.rarity, loadoutLevel],
-  );
-  const partnerTrainingStats = React.useMemo(
-    () => trainingStats({ form: partner.form, rarity: partner.rarity, level: partner.level }),
-    [partner],
-  );
-
-  /**
-   * Score a training move and throw the result away.
-   *
-   * The damage is real — same `computeDamage` the engine calls, same
-   * mitigation, same crit roll, same variance — and it is then used for
-   * nothing but the line on screen. No health is written, on either body: a
-   * training hit is a number, not an injury, and the bar stays full.
-   */
-  const scoreTrainingHit = React.useCallback(
-    (move: string, from: "you" | "partner") => {
-      const attacker = from === "you" ? myTrainingStats : partnerTrainingStats;
-      const target = from === "you" ? partnerTrainingStats : myTrainingStats;
-      const defensive =
-        (DEFENSE_MOVES as readonly string[]).includes(move) ||
-        (DEFENSIVE_COMBOS as readonly string[]).includes(move);
-      // Blocking, dodging and absorbing are not swings: they get the guard
-      // sound and no number, because there is nothing for them to have dealt.
-      if (defensive) {
-        playCue("guard");
-        return;
-      }
-      const combo = (COMBO_MOVES as readonly string[]).includes(move);
-      const result = computeDamage({
-        attack: attacker.attack,
-        defense: target.defense,
-        attackerSpeed: attacker.speed,
-        // Full health every time: nothing carries over between exchanges,
-        // because nothing was taken in the last one.
-        targetHealth: target.health,
-      });
-      setLastHit({ move, damage: result.damage, crit: result.crit, combo, from });
-      // The named training cue, not the generic one: a training hit reads as
-      // its own event on the ear, distinct from a real swing landing.
-      playCue(combo ? "combo_impact" : "training_hit");
-      // The arena reacts in here too, off the same number.
-      reportTrainingHype({ mine: from === "you", damage: result.damage, crit: result.crit, combo });
-    },
-    [myTrainingStats, partnerTrainingStats, reportTrainingHype],
-  );
-
   /**
    * What drives the bot: a timer, not the engine. It throws one of its own
    * body's moves every two to four seconds, the player's character answers
@@ -790,7 +754,7 @@ function Play() {
    */
   React.useEffect(() => {
     const target = stage.stage;
-    if (!target || !trainingMode || !sparring) return;
+    if (!target || !trainingMode || !sparring || boutOver) return;
     let cancelled = false;
     let throwTimer = 0;
     let answerTimers: number[] = [];
@@ -823,7 +787,7 @@ function Play() {
               if (answer) playCue("guard");
               // Scored on the first hit only. A chain lands twice on the eye
               // and the ear, but it is still one exchange and one number.
-              if (index === 0) scoreTrainingHit(move, "partner");
+              if (index === 0) scoreTrainingHit(move, "partner", answer);
             });
           }
           schedule();
@@ -838,7 +802,7 @@ function Play() {
       window.clearTimeout(throwTimer);
       answerTimers.forEach((timer) => window.clearTimeout(timer));
     };
-  }, [stage.stage, trainingMode, sparring, partner, characterMoves, scoreTrainingHit]);
+  }, [stage.stage, trainingMode, sparring, partner, characterMoves, scoreTrainingHit, boutOver]);
 
   React.useEffect(() => {
     stage.stage?.setCombatPaused(combatPaused);
@@ -935,7 +899,7 @@ function Play() {
             // the other body rather than their own move twice.
             if (mine) {
               playCue(
-                (COMBO_MOVES as readonly string[]).includes(attackType ?? "") ? "combo" : "hit",
+                (COMBO_MOVES as readonly string[]).includes(String(attackType ?? "")) ? "combo" : "hit",
               );
             } else {
               playCue(blocked ? "guard" : "hit");
@@ -1386,7 +1350,11 @@ function Play() {
       { matchId, moveType, ...spacing() },
       {
         onSuccess: (result) => {
-          const move = isAnimationState(result?.defenseType) ? result.defenseType : "block";
+          const move = isAnimationState(result?.defenseType)
+            ? result.defenseType
+            : isAnimationState(moveType)
+              ? moveType
+              : "idle";
           stage.stage?.playCharacterAnimation(move);
           playCue("guard");
           setPreviewMove(move);
@@ -1554,10 +1522,10 @@ function Play() {
     // cannot press cannot be caught pressing.
     recoverInMs > INPUT_BUFFER_MS;
 
-  /**
-   * Play a move on the stage, score it, and apply none of it. Training only.
-   */
+  /** Play a move on the stage and score it against the bout. Training only. */
   const playPreview = (pressed: AnimationState) => {
+    // Round over: the loser stays down until a rematch.
+    if (sparring && boutOver) return;
     // The training area is where the stick-plus-button mechanic is learnt, so
     // it resolves footwork on exactly the same terms a fight does — otherwise
     // the one place a player is free to experiment is the one place the
@@ -1569,9 +1537,7 @@ function Play() {
     // Mid-fight the opponent also answers, so a press reads as an exchange
     // rather than as the player shadow-boxing next to a stranger.
     if (!sparring) {
-      // Nobody to hit: the number is the whole point of the press, so it is
-      // scored on the press. Calculated and dropped, as ever — health never
-      // moves in here.
+      // Nobody to hit: the number is shown on the press, and no bar moves.
       scoreTrainingHit(state, "you");
       return;
     }
@@ -1604,7 +1570,7 @@ function Play() {
       // The player's own move already sounded when the pad was pressed; what
       // this adds is the landing on the other body.
       if (!answer) playCue("hit");
-      if (index === 0) scoreTrainingHit(state, "you");
+      if (index === 0) scoreTrainingHit(state, "you", answer);
     });
   };
 
@@ -1672,11 +1638,18 @@ function Play() {
             partnerName={sparring ? partner.name : null}
             partnerLevel={sparring ? partner.level : null}
             lastPartnerMove={partnerMove}
-            lastHit={lastHit}
+            lastHit={bout.lastHit}
+            bout={bout}
+            onRematch={() => {
+              bout.reset();
+              stage.stage?.playCharacterAnimation("idle");
+              stage.stage?.playSparringAnimation("idle");
+            }}
             placed={stage.placed}
             onPlace={stage.place}
             landscape={landscape}
             stick={moveStick}
+            suggest={<SuggestGround fix={geo.fix} />}
             footer={
               <RevealHandle revealed={false} onChange={setChromeRevealed} label="full controls" />
             }

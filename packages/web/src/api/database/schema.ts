@@ -225,7 +225,7 @@ export const item = sqliteTable(
 /* --------------------------------------------------- Zones & nature spawns */
 
 /** Where a play area or hazard came from. OSM proposals need human approval. */
-export const ZONE_SOURCES = ["manual", "osm"] as const;
+export const ZONE_SOURCES = ["manual", "osm", "player"] as const;
 /** A zone only spawns boosters and hosts battles once an operator approves it. */
 export const ZONE_REVIEW = ["pending", "approved", "rejected"] as const;
 
@@ -292,6 +292,40 @@ export const safetyEvent = sqliteTable(
     createdAt: timestamp("created_at").notNull().$defaultFn(now),
   },
   (t) => [index("safety_player_idx").on(t.playerId), index("safety_at_idx").on(t.createdAt)],
+);
+
+/** What happened to a player's fighting-ground suggestion. */
+export const SUGGESTION_STATUS = ["auto_approved", "pending", "rejected", "duplicate"] as const;
+
+/**
+ * A player proposing a playground or park near them as a fighting ground.
+ * The player's own position is never stored — only the public place they
+ * picked, which is re-read from OpenStreetMap rather than trusted from the
+ * client. `zoneId` is the zone it produced (approved or pending review).
+ */
+export const zoneSuggestion = sqliteTable(
+  "zone_suggestion",
+  {
+    id: text("id").primaryKey(),
+    playerId: text("player_id").notNull(),
+    zoneId: text("zone_id"),
+    osmRef: text("osm_ref").notNull(),
+    name: text("name").notNull(),
+    lat: real("lat").notNull(),
+    lng: real("lng").notNull(),
+    radiusM: integer("radius_m").notNull(),
+    note: text("note"),
+    status: text("status", { enum: SUGGESTION_STATUS }).notNull(),
+    /** JSON: the automated checks and what each found. */
+    checks: text("checks"),
+    /** One-line verdict shown to the player and the operator. */
+    summary: text("summary"),
+    createdAt: timestamp("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("zone_suggestion_player_idx").on(t.playerId, t.createdAt),
+    index("zone_suggestion_ref_idx").on(t.osmRef),
+  ],
 );
 
 export const spawnPoint = sqliteTable(

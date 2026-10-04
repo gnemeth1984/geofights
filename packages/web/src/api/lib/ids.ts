@@ -34,6 +34,7 @@ export const ids = {
   report: () => newId("rpt"),
   block: () => newId("blk"),
   moderationAction: () => newId("mod"),
+  zoneSuggestion: () => newId("zsg"),
 };
 
 /** No I, L, O, 0 or 1 — nothing a code can be misread as. */

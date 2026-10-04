@@ -257,7 +257,7 @@ export async function assess(input: {
         canExplore: true,
         headline: "Training Area",
         advice:
-          "Train and fight an opponent here — hits land and combos score, but nobody loses health. Find an approved play area for ranked battles and pickups.",
+          "Spar an opponent here — hits are real and a K.O. ends the round, but nothing is ranked. Find an approved play area for ranked battles and pickups, or suggest a nearby playground as a fighting ground.",
         zone: null,
         hazards,
         speedMps,
@@ -421,7 +421,7 @@ export async function requireBattleGround(input: {
 
 /* ---------------------------------------------------- OSM import (proposals) */
 
-interface OverpassElement {
+export interface OverpassElement {
   type: string;
   id: number;
   tags?: Record<string, string>;
@@ -462,14 +462,14 @@ const DANGER_QUERY = `
  * request with no bounds. Ways therefore need their midpoint derived; nodes
  * already carry lat/lon.
  */
-function elementCenter(el: OverpassElement) {
+export function elementCenter(el: OverpassElement) {
   const lat = el.center?.lat ?? el.lat ?? (el.bounds && (el.bounds.minlat + el.bounds.maxlat) / 2);
   const lng = el.center?.lon ?? el.lon ?? (el.bounds && (el.bounds.minlon + el.bounds.maxlon) / 2);
   if (lat == null || lng == null) return null;
   return { lat, lng };
 }
 
-function radiusFromBounds(el: OverpassElement, fallback: number) {
+export function radiusFromBounds(el: OverpassElement, fallback: number) {
   if (!el.bounds) return fallback;
   const { minlat, minlon, maxlat, maxlon } = el.bounds;
   const h = distanceM({ lat: minlat, lng: minlon }, { lat: maxlat, lng: minlon });
@@ -491,32 +491,84 @@ function hazardKind(tags: Record<string, string>): (typeof schema.DANGER_KINDS)[
  * its full node list (needed to trace a road rather than guess its midpoint).
  * Overpass will not return both in one statement.
  */
-async function overpass(
+export async function overpass(
   query: string,
   lat: number,
   lng: number,
   radiusM: number,
   mode: "bb" | "geom" = "bb",
 ) {
-  const body = `[out:json][timeout:25];(${query.replace(/;/g, `(around:${radiusM},${lat},${lng});`)});out tags ${mode};`;
-  const res = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      // Overpass answers 406 to anonymous clients; its usage policy wants a
-      // contactable agent string on every request.
-      "user-agent": OVERPASS_AGENT,
-    },
-    body: `data=${encodeURIComponent(body)}`,
-  });
-  if (!res.ok) {
-    const detail = (await res.text().catch(() => "")).slice(0, 200);
-    throw new ORPCError("BAD_GATEWAY", {
-      message: `OpenStreetMap (Overpass) refused the scan: ${res.status}. ${detail}`,
+  return overpassRequest(
+    `[out:json][timeout:25];(${query.replace(/;/g, `(around:${radiusM},${lat},${lng});`)});out tags ${mode};`,
+  );
+}
+
+/** One Overpass QL request, with the agent string and a single busy retry. */
+export async function overpassRequest(body: string): Promise<OverpassElement[]> {
+  // The public instance sheds load with 429/504 or a 200 carrying an HTML
+  // "too busy" page; one short retry clears most of those.
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(OVERPASS_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        // Overpass answers 406 to anonymous clients; its usage policy wants a
+        // contactable agent string on every request.
+        "user-agent": OVERPASS_AGENT,
+      },
+      body: `data=${encodeURIComponent(body)}`,
     });
+    const text = await res.text().catch(() => "");
+    const busy =
+      res.status === 429 || res.status === 504 || (res.ok && !text.trimStart().startsWith("{"));
+    if (busy && attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      continue;
+    }
+    if (!res.ok || busy) {
+      throw new ORPCError("BAD_GATEWAY", {
+        message: `OpenStreetMap is busy right now (${res.status}). Try again in a minute.`,
+      });
+    }
+    const json = JSON.parse(text) as { elements?: OverpassElement[] };
+    return json.elements ?? [];
   }
-  const json = (await res.json()) as { elements?: OverpassElement[] };
-  return json.elements ?? [];
+}
+
+/** Largest radius a single hazard scan covers. */
+export const HAZARD_SCAN_MAX_M = 1_500;
+
+/**
+ * Pull roads, rail and water around a point into `danger_zone`, nearest ways
+ * first so the per-scan cap never drops the street beside a playground in
+ * favour of one a kilometre away. Run before any zone goes live: a zone in an
+ * area nobody has scanned would have no hazards protecting it.
+ */
+export async function scanHazardsAround(lat: number, lng: number, radiusM: number) {
+  const scanRadiusM = Math.min(Math.max(100, Math.round(radiusM)), HAZARD_SCAN_MAX_M);
+  const ways = await overpass(DANGER_QUERY, lat, lng, scanRadiusM, "geom");
+  const nearest = (el: OverpassElement) => {
+    const pts = el.geometry?.length ? el.geometry : [];
+    let best = Number.POSITIVE_INFINITY;
+    for (const g of pts) best = Math.min(best, distanceM({ lat, lng }, { lat: g.lat, lng: g.lon }));
+    if (best === Number.POSITIVE_INFINITY) {
+      const c = elementCenter(el);
+      if (c) best = distanceM({ lat, lng }, c);
+    }
+    return best;
+  };
+  const sorted = ways
+    .map((el) => ({ el, d: nearest(el) }))
+    .sort((a, b) => a.d - b.d)
+    .map((x) => x.el);
+  const inserted = await insertHazards(sorted);
+  return {
+    scanRadiusM,
+    waysFound: ways.length,
+    hazardsAdded: inserted.length,
+    /** The zone reaches past what one scan covers; outer hazards may be missing. */
+    partial: radiusM > HAZARD_SCAN_MAX_M,
+  };
 }
 
 /**

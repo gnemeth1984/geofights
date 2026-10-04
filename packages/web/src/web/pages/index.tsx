@@ -127,8 +127,8 @@ function Landing() {
           <ul className="grid gap-6 sm:grid-cols-2 lg:col-span-7">
             <Rule
               icon={<Trees className="size-5" />}
-              title="Only reviewed play areas"
-              body="Parks, pitches and playgrounds are checked by a person before anyone is sent there. Unreviewed places get no drops and no fights."
+              title="Only checked play areas"
+              body="Every park and playground is checked against roads, rail, water and restricted land before anyone is sent there — and a person reviews it whenever anything looks off. Unchecked places get no drops and no fights."
             />
             <Rule
               icon={<ShieldCheck className="size-5" />}

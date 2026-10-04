@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { orpc } from "../lib/api";
+import { client, orpc } from "../lib/api";
 
 /**
  * Admin console data hooks. Every read polls on a short interval — the console
@@ -95,8 +95,18 @@ export function useGenerateBooster() {
 }
 
 export function useCreateZone() {
-  const invalidate = useInvalidateAdmin();
-  return useMutation(orpc.admin.createZone.mutationOptions({ onSuccess: invalidate }));
+  const queryClient = useQueryClient();
+  return useMutation(
+    orpc.admin.createZone.mutationOptions({
+      // Creating a zone also imports hazards around it, and changes which
+      // playground candidates are already covered.
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: orpc.admin.key() });
+        void queryClient.invalidateQueries({ queryKey: orpc.safety.key() });
+        void queryClient.invalidateQueries({ queryKey: SCOUT_KEY });
+      },
+    }),
+  );
 }
 
 export function useUpdateZone() {
@@ -146,6 +156,7 @@ function useInvalidateSafety() {
   return () => {
     void queryClient.invalidateQueries({ queryKey: orpc.safety.key() });
     void queryClient.invalidateQueries({ queryKey: orpc.admin.key() });
+    void queryClient.invalidateQueries({ queryKey: orpc.grounds.key() });
   };
 }
 
@@ -179,4 +190,41 @@ export function useCreateHazard() {
 export function useDeleteHazard() {
   const invalidate = useInvalidateSafety();
   return useMutation(orpc.safety.hazardDelete.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* ------------------------------------------------------------ zone planner */
+
+/**
+ * Kept outside the `admin` namespace on purpose: every admin write invalidates
+ * that namespace, and this one costs a live OpenStreetMap request.
+ */
+const SCOUT_KEY = ["zone-scout"] as const;
+
+export function useSignupAreas() {
+  return useQuery(orpc.admin.signupAreas.queryOptions({ staleTime: 60_000 }));
+}
+
+export function usePlaygroundsNear(center: { lat: number; lng: number } | null, radiusM = 1_500) {
+  const lat = center ? Number(center.lat.toFixed(4)) : 0;
+  const lng = center ? Number(center.lng.toFixed(4)) : 0;
+  return useQuery({
+    queryKey: [...SCOUT_KEY, lat, lng, radiusM],
+    queryFn: () => client.admin.playgroundsNear({ lat, lng, radiusM, includeParks: true }),
+    enabled: Boolean(center),
+    staleTime: 10 * 60_000,
+    retry: 1,
+  });
+}
+
+export function useMapHazards(center: { lat: number; lng: number } | null, radiusM = 2_000) {
+  // Rounded so small pans reuse the cached box instead of refetching.
+  const lat = center ? Number(center.lat.toFixed(2)) : 0;
+  const lng = center ? Number(center.lng.toFixed(2)) : 0;
+  return useQuery(
+    orpc.admin.mapHazards.queryOptions({
+      input: { lat, lng, radiusM },
+      enabled: Boolean(center),
+      staleTime: 60_000,
+    }),
+  );
 }
