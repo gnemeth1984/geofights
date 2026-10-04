@@ -9,7 +9,6 @@ import { JOB_NAMES, jobStatus, runJob, systemStats } from "../services/cron";
 import { createBoosterDefinition } from "../services/boosters";
 import { generateAvatar } from "../services/avatars";
 import {
-  createZone,
   deleteZone,
   refreshDailySpawns,
   spawnInZone,
@@ -20,6 +19,12 @@ import {
 import { adjustCurrency, getPlayer, logTransaction } from "../services/players";
 import { aiConfigured } from "../ai/gateway";
 import { subscriberCount } from "../realtime/bus";
+import {
+  createZoneWithHazardScan,
+  hazardsInArea,
+  playgroundsNear,
+  signupAreas,
+} from "../services/zone-scout";
 
 /**
  * Admin surface, powering the panel at `/admin`. Every procedure requires a
@@ -161,9 +166,42 @@ export const admin = {
         radiusM: z.number().int().min(50).max(20_000).default(500),
         spawnWeight: z.number().int().min(1).max(10).default(1),
         terrain: z.string().max(60).optional(),
+        /** OpenStreetMap feature the zone was picked from, e.g. `way/123`. */
+        osmRef: z
+          .string()
+          .regex(/^(node|way|relation)\/\d+$/)
+          .optional(),
       }),
     )
-    .handler(({ input }) => createZone(input)),
+    // Roads, rail and water around the zone are imported first; if that scan
+    // fails, no zone is created.
+    .handler(({ input }) => createZoneWithHazardScan(input)),
+
+  /** Where players registered (2 dp, ~1 km), to centre the zone map. */
+  signupAreas: adminProc.handler(() => signupAreas()),
+
+  /** Live OpenStreetMap playgrounds (and parks) around a point. Read-only. */
+  playgroundsNear: adminProc
+    .input(
+      z.object({
+        lat: z.number().min(-90).max(90),
+        lng: z.number().min(-180).max(180),
+        radiusM: z.number().int().min(200).max(3_000).default(1_500),
+        includeParks: z.boolean().default(true),
+      }),
+    )
+    .handler(({ input }) => playgroundsNear(input)),
+
+  /** Hazard points to draw on the zone map. */
+  mapHazards: adminProc
+    .input(
+      z.object({
+        lat: z.number().min(-90).max(90),
+        lng: z.number().min(-180).max(180),
+        radiusM: z.number().int().min(100).max(5_000).default(2_000),
+      }),
+    )
+    .handler(({ input }) => hazardsInArea(input.lat, input.lng, input.radiusM)),
 
   updateZone: adminProc
     .input(

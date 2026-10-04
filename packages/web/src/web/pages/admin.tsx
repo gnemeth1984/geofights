@@ -171,7 +171,8 @@ const BLURBS: Record<TabId, string> = {
   players: "Accounts, balances and roles. Grant currency, promote operators, mint avatars.",
   zones: "GPS zones for Nature Exploration and the boosters currently findable in them.",
   safety:
-    "Play areas proposed from OpenStreetMap, the hazard map that overrides them, and every stop the safety layer made.",
+    "Play areas proposed from OpenStreetMap or suggested by players, the hazard map that overrides them, and every stop the safety layer made.",
+  moderation: "Player reports, chat flags and account states — hide or suspend, and review what was flagged.",
   matches: "Matchmaking and the server-authoritative battle engine, with the raw event log.",
   market: "Player-to-player listings. Fixed price, in-game currency only, 10% house fee.",
   economy: "Currency in circulation, marketplace volume, fees collected and the ledger.",

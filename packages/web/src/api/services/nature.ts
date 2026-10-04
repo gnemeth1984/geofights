@@ -81,6 +81,8 @@ export async function createZone(input: {
   radiusM?: number;
   spawnWeight?: number;
   terrain?: string;
+  /** Set when the zone was picked from an OpenStreetMap feature. */
+  osmRef?: string;
 }) {
   const [row] = await db
     .insert(schema.zone)
@@ -93,6 +95,7 @@ export async function createZone(input: {
       radiusM: input.radiusM ?? 500,
       spawnWeight: input.spawnWeight ?? 1,
       terrain: input.terrain ?? null,
+      ...(input.osmRef ? { osmRef: input.osmRef, source: "osm" as const } : {}),
     })
     .returning();
   return row!;
