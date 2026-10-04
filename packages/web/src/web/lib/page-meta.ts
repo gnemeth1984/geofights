@@ -7,7 +7,7 @@ import { useEffect } from "react";
  * game shell, the operator console and the developer pages are all noindex.
  */
 
-export const SITE_URL = "https://geofights.com";
+export const SITE_URL = "https://www.geofights.com";
 
 function setMeta(name: string, content: string) {
   let tag = document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
@@ -29,10 +29,16 @@ function setCanonical(href: string) {
   link.href = href;
 }
 
-export function usePageMeta(meta: { title: string; path: string; index?: boolean }) {
+/** The landing description from index.html, captured once so other routes can restore it. */
+let defaultDescription: string | null = null;
+
+export function usePageMeta(meta: { title: string; path: string; index?: boolean; description?: string }) {
   useEffect(() => {
     document.title = meta.title;
     setCanonical(`${SITE_URL}${meta.path}`);
     setMeta("robots", meta.index ? "index, follow" : "noindex, nofollow");
-  }, [meta.title, meta.path, meta.index]);
+    const current = document.head.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (defaultDescription === null) defaultDescription = current?.content ?? "";
+    setMeta("description", meta.description ?? defaultDescription);
+  }, [meta.title, meta.path, meta.index, meta.description]);
 }

@@ -1,4 +1,4 @@
-# GeoFights — only the landing page is meant to be found in search.
+# GeoFights — only the landing page and press kit are meant to be found in search.
 User-agent: *
 Allow: /
 Disallow: /admin
@@ -7,6 +7,9 @@ Disallow: /docs
 Disallow: /character-lab
 Disallow: /parent-consent
 Disallow: /add-friend
+Disallow: /parent-ground
+Disallow: /reset-password
+Disallow: /play
 Disallow: /api/
 
-Sitemap: https://geofights.com/sitemap.xml
+Sitemap: https://www.geofights.com/sitemap.xml
